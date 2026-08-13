@@ -1,0 +1,6 @@
+# actionlint — GitHub Actions YAML 校验
+# 参见: https://github.com/rhysd/actionlint
+
+# shellcheck 规则集：所有工作流使用默认 shell (bash)
+# 允许使用 gh 命令（在 CI 中由 setup-gh 安装）
+# 允许使用 pnpm（在 CI 中由 pnpm/action-setup 安装）

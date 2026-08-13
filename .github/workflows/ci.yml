@@ -41,8 +41,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Lint (self-inspect · code quality)
+      - name: Lint JS (self-inspect · code quality)
         run: pnpm lint
+
+      - name: Lint YAML — GitHub Actions structure (self-inspect · CI correctness)
+        run: pnpm lint:yaml
+
+      - name: Dead-code scan (self-inspect · no unused deps / binaries)
+        run: pnpm knip --dependencies
+
+      - name: Config drift guard (self-inspect · stale config files)
+        run: |
+          echo "=== Checking for stale config files ==="
+          if [ -f .eslintrc.json ]; then
+            echo "::error::.eslintrc.json exists but eslint.config.js is the active config — remove .eslintrc.json"
+            exit 1
+          fi
+          echo "No stale config files detected ✓"
 
       - name: Format check (self-inspect · style gate)
         run: pnpm format:check

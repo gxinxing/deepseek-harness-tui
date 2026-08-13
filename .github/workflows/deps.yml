@@ -5,7 +5,7 @@ on:
   schedule:
     # Every Monday at 06:00 UTC
     - cron: '0 6 * * 1'
-  workflow_dispatch:   # allow manual trigger
+  workflow_dispatch: # allow manual trigger
 
 permissions:
   contents: write
@@ -81,5 +81,3 @@ jobs:
             Scheduled: every Monday 06:00 UTC" \
             --label "dependencies" \
             --base "${{ github.base_ref }}"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

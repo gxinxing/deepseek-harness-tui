@@ -23,10 +23,13 @@
     "test:coverage": "node --experimental-vm-modules --test --experimental-test-coverage test/*.js",
     "lint": "eslint src test --ext .js",
     "lint:fix": "eslint src test --ext .js --fix",
-    "format": "prettier --write 'src/**/*.js' 'test/**/*.js'",
-    "format:check": "prettier --check 'src/**/*.js' 'test/**/*.js'",
+    "lint:yaml": "node scripts/lint-yaml.cjs .github/workflows/*.yml",
+    "format": "prettier --write 'src/**/*.js' 'test/**/*.js' '**/*.yml'",
+    "format:check": "prettier --check 'src/**/*.js' 'test/**/*.js' '**/*.yml'",
     "typecheck": "echo 'no typecheck configured for JS-only project'",
-    "check": "pnpm lint && pnpm format:check && pnpm test",
+    "check": "pnpm lint && pnpm lint:yaml && pnpm knip && pnpm format:check && pnpm test",
+    "check:ci": "pnpm lint && pnpm lint:yaml && pnpm knip --reporter summary && pnpm format:check && pnpm test",
+    "knip": "knip --dependencies",
     "deps:check": "npm-check-updates --format group && npm-check-updates --audit",
     "deps:update": "npm-check-updates -u && pnpm install",
     "deps:audit": "pnpm audit --audit-level=moderate",
@@ -35,12 +38,12 @@
   },
   "devDependencies": {
     "eslint": "^9.0.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-unicorn": "^55.0.0",
     "husky": "^9.1.0",
+    "knip": "^6.32.2",
     "lint-staged": "^15.0.0",
     "npm-check-updates": "^17.0.0",
-    "prettier": "^3.3.0"
+    "prettier": "^3.3.0",
+    "actionlint": "^2.0.6"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -57,6 +60,10 @@
       "prettier --write",
       "eslint --fix"
     ]
+  },
+  "knip": {
+    "ignore": ["**/*.test.js"],
+    "ignoreDependencies": ["@deepseek-ai/*", "ink-spinner"]
   },
   "volta": {
     "node": ">=20 <23",
