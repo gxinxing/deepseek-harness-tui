@@ -1,8 +1,12 @@
-# dsh-tui
+# deepseek-harness-tui
+
+<p align="center">
+  <img src="assets/screenshot.png" alt="deepseek-harness-tui — DeepSeek Harness terminal chat" width="720">
+</p>
 
 Interactive terminal chat for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — a Codex CLI–style chat experience, built with [Ink](https://github.com/vadimdemedes/ink).
 
-dsh-tui is a Cordis plugin bundle that mounts an Ink chat UI on top of the DeepSeek Harness agent: zero-chrome, bottom-anchored transcript, live status row, single-line composer. Colors are terminal-default plus semantic accents (`cyan` activity, `green` success, `red` errors, `magenta` brand, `dim` secondary), and message tints are derived from your terminal's actual background via OSC 11 — it looks right in any theme.
+deepseek-harness-tui is a Cordis plugin bundle that mounts an Ink chat UI on top of the DeepSeek Harness agent: zero-chrome, bottom-anchored transcript, live status row, single-line composer. Colors are terminal-default plus semantic accents (`cyan` activity, `green` success, `red` errors, `magenta` brand, `dim` secondary), and message tints are derived from your terminal's actual background via OSC 11 — it looks right in any theme.
 
 ## Features
 
@@ -21,12 +25,12 @@ dsh-tui is a Cordis plugin bundle that mounts an Ink chat UI on top of the DeepS
 
 ```sh
 # one-time setup: clone + install (the bundle needs its own node_modules)
-git clone https://github.com/gxinxing/dsh-tui
-cd dsh-tui && pnpm install
+git clone https://github.com/gxinxing/deepseek-harness-tui
+cd deepseek-harness-tui && pnpm install
 
 # one-time wiring (installs the plugin bundle into the tui profile)
 dsh plugin --profile tui add @deepseek-ai/dsh-headless
-dsh plugin --profile tui add /path/to/dsh-tui   # the checkout from above
+dsh plugin --profile tui add /path/to/deepseek-harness-tui   # the checkout from above
 
 # run
 dsh --profile tui

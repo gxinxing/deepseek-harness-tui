@@ -1,8 +1,12 @@
-# dsh-tui
+# deepseek-harness-tui
+
+<p align="center">
+  <img src="assets/screenshot.png" alt="deepseek-harness-tui — DeepSeek Harness terminal chat" width="720">
+</p>
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）提供交互式终端聊天界面——Codex CLI 风格，基于 [Ink](https://github.com/vadimdemedes/ink)（React 终端 UI 框架）构建。
 
-dsh-tui 是一个 Cordis 插件包，在 DeepSeek Harness agent 之上挂载一套 Ink 聊天界面：zero-chrome（零装饰）、底部锚定 transcript、实时状态行、单行输入框。配色以终端默认色为基础，叠加语义化强调色（`cyan` 活动、`green` 成功、`red` 错误、`magenta` 品牌、`dim` 次要），消息底色通过 OSC 11 从终端真实背景推导——在任何主题下都自然协调。
+deepseek-harness-tui 是一个 Cordis 插件包，在 DeepSeek Harness agent 之上挂载一套 Ink 聊天界面：zero-chrome（零装饰）、底部锚定 transcript、实时状态行、单行输入框。配色以终端默认色为基础，叠加语义化强调色（`cyan` 活动、`green` 成功、`red` 错误、`magenta` 品牌、`dim` 次要），消息底色通过 OSC 11 从终端真实背景推导——在任何主题下都自然协调。
 
 ## 特性
 
@@ -21,12 +25,12 @@ dsh-tui 是一个 Cordis 插件包，在 DeepSeek Harness agent 之上挂载一�
 
 ```sh
 # 一次性准备：clone + 安装（bundle 需要自己的 node_modules）
-git clone https://github.com/gxinxing/dsh-tui
-cd dsh-tui && pnpm install
+git clone https://github.com/gxinxing/deepseek-harness-tui
+cd deepseek-harness-tui && pnpm install
 
 # 一次性接线（把插件 bundle 装进 tui profile）
 dsh plugin --profile tui add @deepseek-ai/dsh-headless
-dsh plugin --profile tui add /path/to/dsh-tui   # 即上面的 checkout 路径
+dsh plugin --profile tui add /path/to/deepseek-harness-tui   # 即上面的 checkout 路径
 
 # 运行
 dsh --profile tui
