@@ -1,7 +1,7 @@
 # deepseek-harness-tui x DeepSeek Harness — Integration Report
 
-Source checkout: `/Users/simon/Projects/deepseek-harness` (verified 2026-08-13)
-Installed CLI: `/Users/simon/.npm-global/bin/dsh` = `@deepseek-ai/dsh` 0.1.0-rc.6; pnpm 10.32.1; Node v22.23.1
+Source checkout: `$DSH_HOME_SRC` (verified 2026-08-13)
+Installed CLI: `$NPM_GLOBAL_BIN/dsh` = `@deepseek-ai/dsh` 0.1.0-rc.6; pnpm 10.32.1; Node v22.23.1
 Profiles on disk: `~/.dsh/profiles/{headless, web, tui}`; `tui` currently holds only `@deepseek-ai/dsh-base` in `dsh.profile.bundles` (no headless yet).
 Method: source quotes (file:line) + live `dsh --dump-config` output + one throwaway-profile empirical test (`dsh plugin add` of a scriptless local package; profile removed afterwards).
 
@@ -29,7 +29,7 @@ Empirically verified: a later bundle patch `- id: timer / disabled: true` produc
 **(c) Unmatched target = warning, not error.** `vendor/include/src/index.ts:52` ("A patch that matches nothing warns and is skipped"), `:106-113` (`warn('patch: entry %C not found', id); continue`), and `packages/boot/app-boot/src/index.ts:312-313` ("a single patch whose target row is absent stays a per-entry Loader warning, so one overlay shared across surfaces does not have to match every tree"). The dump path writes warnings to **stderr** by default: `renderConfigDump`'s `warn` sink is `line => void process.stderr.write(line + '\n')` (`app-boot/src/index.ts:383`). Verified live:
 ```
 $ dsh --profile zz-allowbuilds-test --dump-config >/dev/null
-dsh: [/Users/simon/.dsh/profiles/zz-allowbuilds-test/cordis.patch.yml] patch: entry "does-not-exist-row" not found   # exit 0
+dsh: [$DSH_HOME/profiles/zz-allowbuilds-test/cordis.patch.yml] patch: entry "does-not-exist-row" not found   # exit 0
 ```
 Nuance for the **boot** path: the include warns through `this.ctx.root.logger?.('loader').warn(...)` (`vendor/include/src/index.ts:269`). Cordis's default logger exporter only buffers (`vendor/cordis/src/logger.ts:196-210`), and neither `dsh-base` nor `dsh-headless` mounts `@deepseek-ai/cordis-plugin-logger-console`, so a boot-time unmatched patch may be invisible unless a console exporter is registered. The stderr claim in the reference doc is exactly true for `--dump-config`; at boot it is "a warning routed to the Cordis logger" (buffered by default).
 
@@ -66,22 +66,22 @@ with the contract comment: "The installation-first order is the contract that `@
 ```ts
 const result = spawnSync('pnpm', args.map(argument => anchorPathSpec(argument, process.cwd())), { cwd: dir, stdio: 'inherit' })
 ```
-then on exit 0: `reconcilePlugins(before, dir)` (`:137-140`). `anchorPathSpec` (`:104-118`) rewrites only relative `.`/`..` specs against the invoking cwd; **an absolute path spec like `/Users/simon/Projects/deepseek-harness-tui` passes through untouched** and pnpm records it as a `link:` dependency. `reconcilePlugins` (`:59-101`) then appends every dependency that resolves to a `dsh.bundle`-declaring package to `dsh.profile.bundles`:
+then on exit 0: `reconcilePlugins(before, dir)` (`:137-140`). `anchorPathSpec` (`:104-118`) rewrites only relative `.`/`..` specs against the invoking cwd; **an absolute path spec like `$DSH_HOME_SRC-tui` passes through untouched** and pnpm records it as a `link:` dependency. `reconcilePlugins` (`:59-101`) then appends every dependency that resolves to a `dsh.bundle`-declaring package to `dsh.profile.bundles`:
 ```ts
 const isBundle = exportsPatch(packageName, profileDir)   // manifest.dsh?.bundle?.patch !== undefined  (:36-54)
 if (isBundle && !plugins.includes(packageName)) { plugins.push(packageName); changed = true }
 ```
 It also warns once for a newly-added bundle-less dependency (`:71-75`) and removes deps that stopped being bundles (`:84-91`).
 
-**Empirically verified** (throwaway profile `zz-allowbuilds-test`, cleaned up): `dsh plugin --profile zz-allowbuilds-test add /tmp/zz-deepseek-harness-tui-scratch` (a `dsh.bundle.patch`-declaring package, no scripts) exited 0; pnpm wrote `"deepseek-harness-tui-scratch": "link:/tmp/zz-deepseek-harness-tui-scratch"` into `dependencies`; `node_modules/deepseek-harness-tui-scratch -> /tmp/zz-deepseek-harness-tui-scratch` symlink; reconcile appended `"deepseek-harness-tui-scratch"` to `bundles` after `@deepseek-ai/dsh-base`; `--dump-config` then showed the composed tree including the bundle's rows (and its `timer` disable).
+**Empirically verified** (throwaway profile `zz-allowbuilds-test`, cleaned up): `dsh plugin --profile zz-allowbuilds-test add /tmp/zz-deepseek-harness-tui-scratch (throwaway)` (a `dsh.bundle.patch`-declaring package, no scripts) exited 0; pnpm wrote `"deepseek-harness-tui-scratch": "link:/tmp/zz-deepseek-harness-tui-scratch (throwaway)"` into `dependencies`; `node_modules/deepseek-harness-tui-scratch -> /tmp/zz-deepseek-harness-tui-scratch (throwaway)` symlink; reconcile appended `"deepseek-harness-tui-scratch"` to `bundles` after `@deepseek-ai/dsh-base`; `--dump-config` then showed the composed tree including the bundle's rows (and its `timer` disable).
 
-VERDICT: `dsh.profile.bundles` composes in order; in-box bundles resolve from the dsh installation (never the profile); `dsh plugin --profile tui add /Users/simon/Projects/deepseek-harness-tui` will `link:` it into the profile and reconcile appends `deepseek-harness-tui` to `bundles` (after base, i.e. after headless when headless is listed) because it declares `dsh.bundle.patch`.
+VERDICT: `dsh.profile.bundles` composes in order; in-box bundles resolve from the dsh installation (never the profile); `dsh plugin --profile tui add $DSH_HOME_SRC-tui` will `link:` it into the profile and reconcile appends `deepseek-harness-tui` to `bundles` (after base, i.e. after headless when headless is listed) because it declares `dsh.bundle.patch`.
 
 ---
 
 ## 3. Row inventory
 
-Commands run: `dsh --profile headless --dump-config` (81 rows), `dsh --profile web --dump-config` (129 rows), both exit 0 with empty stderr. The dump groups rows under `# == <source>` provenance comments and attributes patches per layer (e.g. `# == @deepseek-ai/dsh-base, patched by /Users/simon/.dsh/profiles/headless/cordis.patch.yml`).
+Commands run: `dsh --profile headless --dump-config` (81 rows), `dsh --profile web --dump-config` (129 rows), both exit 0 with empty stderr. The dump groups rows under `# == <source>` provenance comments and attributes patches per layer (e.g. `# == @deepseek-ai/dsh-base, patched by $DSH_HOME/profiles/headless/cordis.patch.yml`).
 
 ### 3.1 `@deepseek-ai/dsh-base` contributes exactly 78 rows
 (`packages/bundle/base/cordis.patch.yml`, one `- insert:`; ids/names extracted from the file):
@@ -446,7 +446,7 @@ import(name: string, getOuterStack?: () => string[]) {
 ```
 For the CLI profile boot `bareModuleBaseUrl` is not passed (`profile-boot.ts:253`), so the plain `Include` is used and `baseUrl` is the **profile directory**: `boot()` sets `ctx.baseUrl = pathToFileURL(dirname(absoluteConfigPath)).href + '/'` (`packages/boot/app-boot/src/index.ts:769`; root config = `<profile>/cordis.yml`), and the Include constructor re-anchors to the same dir (`vendor/include/src/index.ts:204`). `internal.import(name, baseUrl, {})` is Node's internal ESM loader, which resolves bare specifiers by the standard `node_modules` **parent-walk from the profile directory**: `<profile>/node_modules` (pnpm-managed, where `deepseek-harness-tui` is symlinked) -> `$DSH_HOME/profiles/node_modules` (installation fallback) -> up. Node ESM resolution **honors the `exports` map** (`"."` -> `./src/index.js`).
 
-Empirically verified with a scratch `file:`-linked package: from the profile dir, `import.meta.resolve('deepseek-harness-tui-scratch')` -> `file:///private/tmp/zz-deepseek-harness-tui-scratch/src/index.js` (exports map honored), exports `['apply', 'name']` loaded.
+Empirically verified with a scratch `file:`-linked package: from the profile dir, `import.meta.resolve('deepseek-harness-tui-scratch')` -> `file:///private/tmp/zz-deepseek-harness-tui-scratch (throwaway)/src/index.js` (exports map honored), exports `['apply', 'name']` loaded.
 
 Caveat: if `ctx.loader.internal` were `undefined` (no Node internal loader), bare names would fall back to a plain `import(name)` from the loader module's own resolution — not profile-anchored. The installed dsh ships `node-addon-require-builtin` (`apps/cli/package.json` dependencies) so `ModuleLoader.fromInternal()` works (`vendor/loader/src/internal.ts:67-75`) and the primary path applies.
 
@@ -501,14 +501,14 @@ autoInstallPeers: false
 ```
 There is **no `allowBuilds` key** — dsh never writes one. `dsh plugin` only *mentions* allowBuilds in an error hint for **git-hosted** specs (`apps/cli/src/plugin.ts:143-154`): "git-hosted plugins build on install via their prepare script, which pnpm blocks until allowed — add the exact key pnpm printed above under allowBuilds in …/pnpm-workspace.yaml, then re-run". pnpm 10's build-script gate only affects packages that have lifecycle scripts (`prepare`/`postinstall`/`preinstall`); a `file:`-linked package with **no build/prepare scripts** runs no lifecycle scripts, so nothing is blocked and no allowBuilds dance is needed.
 
-Empirically verified (throwaway profile, cleaned up): `dsh plugin --profile zz-allowbuilds-test add /tmp/zz-deepseek-harness-tui-scratch` — a scriptless package with `dsh.bundle.patch` — succeeded in ~0.4 s, exit 0, no allowBuilds; pnpm wrote `"deepseek-harness-tui-scratch": "link:/tmp/zz-deepseek-harness-tui-scratch"`.
+Empirically verified (throwaway profile, cleaned up): `dsh plugin --profile zz-allowbuilds-test add /tmp/zz-deepseek-harness-tui-scratch (throwaway)` — a scriptless package with `dsh.bundle.patch` — succeeded in ~0.4 s, exit 0, no allowBuilds; pnpm wrote `"deepseek-harness-tui-scratch": "link:/tmp/zz-deepseek-harness-tui-scratch (throwaway)"`.
 
 **Gotchas with absolute-path specs:**
-- `anchorPathSpec` passes absolute specs through verbatim (`plugin.ts:104-118`); pnpm records `link:<abs>` in `dependencies` + lockfile and creates a **symlink** into the profile's `node_modules`. The linked directory must exist at add time, and the symlink points at the live directory — moving/renaming `/Users/simon/Projects/deepseek-harness-tui` breaks resolution until re-`add`.
+- `anchorPathSpec` passes absolute specs through verbatim (`plugin.ts:104-118`); pnpm records `link:<abs>` in `dependencies` + lockfile and creates a **symlink** into the profile's `node_modules`. The linked directory must exist at add time, and the symlink points at the live directory — moving/renaming `$DSH_HOME_SRC-tui` breaks resolution until re-`add`.
 - Reconcile is based on installed state, so `deepseek-harness-tui` joins `bundles` **only if** its `package.json` declares `dsh.bundle.patch` (any file name works, e.g. `./dsh.bundle.patch`); otherwise it installs with a "declares no dsh.bundle" warning and never joins the layer stack.
 - If the tui-runner plugin has its own deps: `autoInstallPeers: false` plus the flat fallback mean missing peers fall through to the healed `~/.dsh/profiles/node_modules`, so the plugin shares the installation's single `@deepseek-ai/cordis` instance (comment at `profile.ts:138-140`).
 
-VERDICT: `dsh plugin --profile tui add /Users/simon/Projects/deepseek-harness-tui` succeeds without any allowBuilds change as long as the package has no build/prepare scripts; the only caveats are the absolute-path `link:` symlink (source dir must stay put) and that the manifest must declare `dsh.bundle.patch` for the reconcile to append it to `bundles`.
+VERDICT: `dsh plugin --profile tui add $DSH_HOME_SRC-tui` succeeds without any allowBuilds change as long as the package has no build/prepare scripts; the only caveats are the absolute-path `link:` symlink (source dir must stay put) and that the manifest must declare `dsh.bundle.patch` for the reconcile to append it to `bundles`.
 
 ---
 
@@ -554,7 +554,7 @@ VERDICT: every appended event on a store-entered session emits `session/event` (
 
 ## Cross-cutting notes for the tui plan
 
-- Bundle order `["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-headless", "deepseek-harness-tui"]` matches the flatten-append semantics: base rows -> headless rows -> tui rows, and tui's disables target headless rows correctly (Q1). **Current state (2026-08-14):** the `tui` profile is fully wired — `dsh plugin --profile tui add @deepseek-ai/dsh-headless` and `dsh plugin --profile tui add /Users/simon/Projects/deepseek-harness-tui` were both run and verified live (`dsh --profile tui` boots the Ink UI end-to-end with the TokenDance route).
+- Bundle order `["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-headless", "deepseek-harness-tui"]` matches the flatten-append semantics: base rows -> headless rows -> tui rows, and tui's disables target headless rows correctly (Q1). **Current state (2026-08-14):** the `tui` profile is fully wired — `dsh plugin --profile tui add @deepseek-ai/dsh-headless` and `dsh plugin --profile tui add $DSH_HOME_SRC-tui` were both run and verified live (`dsh --profile tui` boots the Ink UI end-to-end with the TokenDance route).
 - The tui-runner plugin should follow `packages/bundle/headless/src/index.ts:96-137` verbatim in shape: `await ctx.get('loader')?.await()` first, read `appExit` via `ctx.get('appExit')`, drive `agents.create(...)` with `agentOptions: { provider, model }` from `agentDefaultModel.currentSelection()`, then `whenIdle`/`followup`/`flush`/`exit`.
 - A config-less row needs no `Config` export (Q5); the headless pattern of exporting `Config` + `inject: [headlessStartup]` is optional — `!!js` expressions in `config` are supported by the patch parser (`packages/boot/app-boot/src/index.ts:304-311`).
 - `llm-deepseek` config patch (Q3a) is proven end-to-end by the headless profile; the same `cordis.patch.yml` shape works in tui.
