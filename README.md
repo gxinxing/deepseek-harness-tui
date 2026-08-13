@@ -21,6 +21,34 @@ deepseek-harness-tui is a Cordis plugin bundle that mounts an Ink chat UI on top
 - **Brand welcome screen** — the empty state shows the DeepSeek block logo mark plus a tagline.
 - **Status row** — braille spinner + compact elapsed timer (`Working 5s`) + `esc interrupt` hint while busy.
 
+## Installing DeepSeek Harness
+
+dsh-tui runs on top of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) — install it first (pick one):
+
+- **npm (recommended)** — global CLI:
+
+  ```sh
+  npm install -g @deepseek-ai/dsh
+  dsh --version        # 0.1.0-rc.6+
+  ```
+
+- **npx** — run without installing:
+
+  ```sh
+  npx @deepseek-ai/dsh web    # starts the official Web UI
+  ```
+
+- **From source**:
+
+  ```sh
+  git clone https://github.com/deepseek-ai/deepseek-harness.git
+  cd deepseek-harness
+  pnpm install && pnpm run build
+  pnpm dsh web
+  ```
+
+> **Homebrew:** there is no official `brew` tap yet — use the npm install above.
+
 ## Quick start
 
 ```sh
@@ -81,7 +109,24 @@ llm-deepseek:
   baseURL: https://tokendance.space/gateway/v1
 ```
 
-The key lives in `~/.dsh/.credentials.yaml` (0600). Default model: `deepseek-official/deepseek-v4-flash`.
+### Credentials
+
+Point `TOKENDANCE_API_KEY` at your TokenDance key, either way:
+
+- Environment variable:
+  ```sh
+  export TOKENDANCE_API_KEY=sk-...
+  ```
+- Credentials file (`~/.dsh/.credentials.yaml`, mode 0600):
+  ```yaml
+  TOKENDANCE_API_KEY: sk-...
+  ```
+
+### Provider & models
+
+The TokenDance provider is registered in `~/.dsh/settings.yaml` (`llm-pi-ai.providers.tokendance`): OpenAI-compatible endpoint, `thinkingFormat: deepseek`, models `deepseek-v4-flash` and `deepseek-v4-pro`.
+
+Default model: `deepseek-official/deepseek-v4-flash`. To switch models, edit the provider's `models` list in `~/.dsh/settings.yaml` or override `llm-deepseek.model` in your profile patch.
 
 > **Prerequisite fix (one-time, per dsh install).** TokenDance streams subsequent tool-call deltas with empty `name`/`id`; the stock `@deepseek-ai/dsh-llm-deepseek` adapter overwrites the first frame's call id with `""` and the harness loops on `unknown tool ""`. Applied the guard in `node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js`:
 >

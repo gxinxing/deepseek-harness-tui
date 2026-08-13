@@ -21,6 +21,34 @@ deepseek-harness-tui 是一个 Cordis 插件包，在 DeepSeek Harness agent 之
 - **品牌欢迎界面** —— 空态显示 DeepSeek block logo 标识与标语。
 - **状态行** —— 忙碌时显示盲文 spinner + 紧凑计时（`Working 5s`）+ `esc interrupt` 提示。
 
+## 安装 DeepSeek Harness
+
+dsh-tui 运行在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）之上——请先安装 dsh（三选一）：
+
+- **npm（推荐，全局安装）**：
+
+  ```sh
+  npm install -g @deepseek-ai/dsh
+  dsh --version        # 0.1.0-rc.6+
+  ```
+
+- **npx（免安装试用）**：
+
+  ```sh
+  npx @deepseek-ai/dsh web    # 启动官方 Web UI
+  ```
+
+- **源码编译**：
+
+  ```sh
+  git clone https://github.com/deepseek-ai/deepseek-harness.git
+  cd deepseek-harness
+  pnpm install && pnpm run build
+  pnpm dsh web
+  ```
+
+> **Homebrew：** 官方目前没有提供 brew tap，请使用上面的 npm 安装方式。
+
 ## 快速开始
 
 ```sh
@@ -81,7 +109,24 @@ llm-deepseek:
   baseURL: https://tokendance.space/gateway/v1
 ```
 
-密钥存放在 `~/.dsh/.credentials.yaml`（0600）。默认模型：`deepseek-official/deepseek-v4-flash`。
+### 凭据配置
+
+把 TokenDance 的 key 通过以下任一方式提供给 `TOKENDANCE_API_KEY`：
+
+- 环境变量：
+  ```sh
+  export TOKENDANCE_API_KEY=sk-...
+  ```
+- 凭据文件（`~/.dsh/.credentials.yaml`，权限 0600）：
+  ```yaml
+  TOKENDANCE_API_KEY: sk-...
+  ```
+
+### Provider 与模型
+
+TokenDance provider 注册在 `~/.dsh/settings.yaml`（`llm-pi-ai.providers.tokendance`）：OpenAI 兼容端点、`thinkingFormat: deepseek`，模型为 `deepseek-v4-flash` 与 `deepseek-v4-pro`。
+
+默认模型：`deepseek-official/deepseek-v4-flash`。切换模型：编辑 `~/.dsh/settings.yaml` 中 provider 的 `models` 列表，或在 profile patch 里覆盖 `llm-deepseek.model`。
 
 > **前置修复（一次性，每个 dsh 安装需执行一次）。** TokenDance 流式返回后续 tool-call 增量时 `name`/`id` 为空；官方 `@deepseek-ai/dsh-llm-deepseek` 适配器会用 `""` 覆盖首帧的 call id，导致 harness 在 `unknown tool ""` 上死循环。已在 `node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js` 中应用防护：
 >
