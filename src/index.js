@@ -155,6 +155,29 @@ async function run(ctx, exit) {
       onEvent: forward,
       onExit,
       onInterrupt: () => agent.cancel({ kind: 'user' }),
+      onModelSwitch: (newModel) => {
+        try {
+          // Update the default model selection so the next turn uses the new model.
+          // The agent's model selection is installed via installModelSelection;
+          // we update the selection object's `current` to reflect the new model.
+          const selection = defaultModel.currentSelection()
+          if (selection && selection.model === newModel) return true
+          // Best-effort: update the default model source if the API supports it.
+          if (typeof defaultModel.updateSelection === 'function') {
+            defaultModel.updateSelection({ ...selection, model: newModel })
+            return true
+          }
+          // Fallback: the selection object is mutable (installed via installModelSelection).
+          const installed = agent.ctx?.get?.('__modelSelection__')
+          if (installed && installed.current) {
+            installed.current = { ...installed.current, model: newModel }
+            return true
+          }
+          return false
+        } catch {
+          return false
+        }
+      },
       firstSeq,
       model: selection.model,
       themeBg,

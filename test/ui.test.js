@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { wrapText, truncate, splitOutput, stripAnsi, userMessageBg, codeChipBg, markdownLines, splitCodeBlocks, estimateItemLines, computeViewport } from '../src/ui.js'
+import { wrapText, truncate, splitOutput, stripAnsi, userMessageBg, codeChipBg, markdownLines, splitCodeBlocks } from '../src/ui.js'
 
 // ── splitCodeBlocks ───────────────────────────────────────────────────────
 
@@ -174,9 +174,11 @@ describe('userMessageBg', () => {
   })
 
   test('null input returns fallback without throwing', () => {
-    assert.equal(userMessageBg(null), '#000000')
-    assert.equal(userMessageBg(undefined), '#000000')
-    assert.equal(userMessageBg('invalid'), '#000000')
+    // hexToRgb(null) → [0,0,0]; isLightBg([0,0,0]) → false;
+    // blend([255,255,255], [0,0,0], 0.12) → [31,31,31] → #1f1f1f
+    assert.equal(userMessageBg(null), '#1f1f1f')
+    assert.equal(userMessageBg(undefined), '#1f1f1f')
+    assert.equal(userMessageBg('invalid'), '#1f1f1f')
   })
 })
 
@@ -200,9 +202,11 @@ describe('codeChipBg', () => {
   })
 
   test('null input returns fallback without throwing', () => {
-    assert.equal(codeChipBg(null), '#333333')
-    assert.equal(codeChipBg(undefined), '#333333')
-    assert.equal(codeChipBg('invalid'), '#333333')
+    // hexToRgb(null) → [0,0,0]; isLightBg([0,0,0]) → false;
+    // blend([255,255,255], [0,0,0], 0.22) → [56,56,56] → #383838
+    assert.equal(codeChipBg(null), '#383838')
+    assert.equal(codeChipBg(undefined), '#383838')
+    assert.equal(codeChipBg('invalid'), '#383838')
   })
 })
 

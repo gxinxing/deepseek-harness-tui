@@ -23,7 +23,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Box, Text, useApp, useInput, useStdout } from 'ink'
 import TextInput from 'ink-text-input'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { hexToRgb, rgbToHex, isLightBg, blend } from './utils.js'
+import { userMessageBg, codeChipBg } from './utils.js'
 
 /** createElement shorthand. */
 const el = React.createElement
@@ -34,20 +34,6 @@ const OK = 'green' // ✓, command output
 const ERR = 'red' // ✗, errors
 const BRAND = 'magenta' // `$` prompt, app mark
 
-/** Faint block behind user messages (Codex user_message_bg_rgb). */
-const userMessageBg = (bgHex) => {
-  const bg = hexToRgb(bgHex)
-  if (!bg) return '#000000'
-  const light = isLightBg(bg)
-  return rgbToHex(blend(light ? [0, 0, 0] : [255, 255, 255], bg, light ? 0.04 : 0.12))
-}
-/** Slightly stronger chip behind inline code. */
-const codeChipBg = (bgHex) => {
-  const bg = hexToRgb(bgHex)
-  if (!bg) return '#333333'
-  const light = isLightBg(bg)
-  return rgbToHex(blend(light ? [0, 0, 0] : [255, 255, 255], bg, light ? 0.08 : 0.22))
-}
 /** Codex-style braille spinner (ink-spinner has no braille frame set). */
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
