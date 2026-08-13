@@ -10,6 +10,9 @@
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

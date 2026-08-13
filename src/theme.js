@@ -7,13 +7,7 @@
  * listening, then hands the color to the App as an initial value.
  */
 
-const hexToRgb = (hex) => {
-  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex ?? '')
-  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null
-}
-
-const rgbToHex = ([r, g, b]) =>
-  `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`
+import { hexToRgb, rgbToHex } from './utils.js'
 
 /**
  * Resolve the terminal background color, or `null` when unknown.

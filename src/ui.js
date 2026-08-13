@@ -23,6 +23,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Box, Text, useApp, useInput, useStdout } from 'ink'
 import TextInput from 'ink-text-input'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { hexToRgb, rgbToHex, isLightBg, blend } from './utils.js'
 
 /** createElement shorthand. */
 const el = React.createElement
@@ -33,27 +34,19 @@ const OK = 'green' // ✓, command output
 const ERR = 'red' // ✗, errors
 const BRAND = 'magenta' // `$` prompt, app mark
 
-// Terminal-background derived tints (Codex style.rs): blend white 12% over a
-// dark background / black 4% over a light one, so any terminal theme works.
-const isLightBg = (rgb) => 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2] > 128
-const blend = (fg, bg, alpha) => [
-  Math.round(fg[0] * alpha + bg[0] * (1 - alpha)),
-  Math.round(fg[1] * alpha + bg[1] * (1 - alpha)),
-  Math.round(fg[2] * alpha + bg[2] * (1 - alpha)),
-]
-const rgbToHex = ([r, g, b]) =>
-  `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`
-const hexToRgb = (hex) => {
-  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex ?? '')
-  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [0, 0, 0]
-}
 /** Faint block behind user messages (Codex user_message_bg_rgb). */
-const userMessageBg = (bgHex) =>
-  rgbToHex(blend(isLightBg(hexToRgb(bgHex)) ? [0, 0, 0] : [255, 255, 255], hexToRgb(bgHex), isLightBg(hexToRgb(bgHex)) ? 0.04 : 0.12))
+const userMessageBg = (bgHex) => {
+  const bg = hexToRgb(bgHex)
+  if (!bg) return '#000000'
+  const light = isLightBg(bg)
+  return rgbToHex(blend(light ? [0, 0, 0] : [255, 255, 255], bg, light ? 0.04 : 0.12))
+}
 /** Slightly stronger chip behind inline code. */
 const codeChipBg = (bgHex) => {
-  const light = isLightBg(hexToRgb(bgHex))
-  return rgbToHex(blend(light ? [0, 0, 0] : [255, 255, 255], hexToRgb(bgHex), light ? 0.08 : 0.22))
+  const bg = hexToRgb(bgHex)
+  if (!bg) return '#333333'
+  const light = isLightBg(bg)
+  return rgbToHex(blend(light ? [0, 0, 0] : [255, 255, 255], bg, light ? 0.08 : 0.22))
 }
 /** Codex-style braille spinner (ink-spinner has no braille frame set). */
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
@@ -80,8 +73,11 @@ const HELP_TEXT = [
   '  /clear        clear the transcript',
   '  /exit, /quit  quit dsh tui',
   'keys:',
-  '  ctrl + t      toggle thinking display',
-  '  ctrl + c      quit',
+  '  ↑ / ↓          scroll transcript',
+  '  page up/down   scroll by page',
+  '  esc            back to latest',
+  '  ctrl + t       toggle thinking display',
+  '  ctrl + c       quit',
 ].join('\n')
 
 // ── Width helpers (CJK-aware) ────────────────────────────────────────────
@@ -232,15 +228,31 @@ function fmtElapsedCompact(ms) {
 /** Split text into fenced code blocks and plain segments. */
 function splitCodeBlocks(text) {
   const blocks = []
-  const fence = /```([^`]*)```/g
-  let last = 0
-  let match
-  while ((match = fence.exec(text)) !== null) {
-    if (match.index > last) blocks.push({ type: 'text', content: text.slice(last, match.index) })
-    blocks.push({ type: 'code', content: match[0] })
-    last = match.index + match[0].length
+  const lines = String(text).split('\n')
+  let inFence = false
+  let buf = []
+  for (const line of lines) {
+    if (line.startsWith('```')) {
+      if (inFence) {
+        buf.push(line)
+        blocks.push({ type: 'code', content: buf.join('\n') })
+        buf = []
+        inFence = false
+      } else {
+        if (buf.length > 0) {
+          blocks.push({ type: 'text', content: buf.join('\n') })
+          buf = []
+        }
+        inFence = true
+        buf.push(line)
+      }
+    } else {
+      buf.push(line)
+    }
   }
-  if (last < text.length) blocks.push({ type: 'text', content: text.slice(last) })
+  if (buf.length > 0) {
+    blocks.push({ type: inFence ? 'code' : 'text', content: buf.join('\n') })
+  }
   return blocks
 }
 
@@ -340,6 +352,30 @@ function splitOutput(text) {
   return {
     lines: [...lines.slice(0, OUTPUT_HEAD), ...lines.slice(-OUTPUT_TAIL)],
     omitted: lines.length - OUTPUT_HEAD - OUTPUT_TAIL,
+  }
+}
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, message: '' }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, message: error instanceof Error ? error.message : String(error) }
+  }
+  componentDidUpdate(prevProps) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, message: '' })
+    }
+  }
+  componentDidCatch(error) {
+    console.error(`dsh-tui: render error: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  render() {
+    if (this.state.hasError) {
+      return el(Text, { color: ERR, wrap: 'wrap' }, `⚠ render error: ${this.state.message}`)
+    }
+    return this.props.children
   }
 }
 
@@ -474,12 +510,15 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
   const [stream, setStream] = useState({ reasoning: '', text: '', tool: null })
   const [hint, setHint] = useState(null)
   const [thinkingOpen, setThinkingOpen] = useState(true)
+  const [scrollLines, setScrollLines] = useState(0)
+  const viewportStep = useRef(5)
   const [, setTick] = useState(0) // drives the Working elapsed timer
   const usageRef = useRef(null)
   const hintTimer = useRef(undefined)
   const exiting = useRef(false)
   const toolStarts = useRef(new Map())
   const turnStart = useRef(undefined)
+  const lastEventAt = useRef(Date.now())
   const { exit: inkExit } = useApp()
   const { stdout } = useStdout()
   const cols = stdout?.columns ?? 100
@@ -526,13 +565,17 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
   useInput((input, key) => {
     if (key.ctrl && input === 'c') handleExit()
     else if (key.escape && busy && typeof onInterrupt === 'function') onInterrupt()
+    else if (key.escape) setScrollLines(0)
     else if (key.ctrl && input === 't') setThinkingOpen((v) => !v)
+    else if (key.upArrow || key.pageUp) setScrollLines((v) => v + viewportStep.current)
+    else if (key.downArrow || key.pageDown) setScrollLines((v) => Math.max(0, v - viewportStep.current))
   })
 
   /** Map one SessionEvent to UI state. Defensive: unknown shapes are ignored. */
   const handleEvent = useCallback(
     (event) => {
       if (!event || typeof event !== 'object') return
+      lastEventAt.current = Date.now()
       // Events below the agent's live boundary are seed history, not chat.
       if (typeof event.seq === 'number' && event.seq < firstSeq) return
       const data = event.data && typeof event.data === 'object' ? event.data : {}
@@ -540,6 +583,8 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
         case 'turn/start':
           setBusy(true)
           turnStart.current = Date.now()
+          lastEventAt.current = Date.now()
+          setScrollLines(0)
           setStream({ reasoning: '', text: '', tool: null })
           // Mirror the harness todos projection: cleared by the next turn/start
           // (turn/end keeps the finished checklist visible).
@@ -679,6 +724,7 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
         setStream({ reasoning: '', text: '', tool: null })
         usageRef.current = null
         toolStarts.current = new Map()
+        setScrollLines(0)
         return
       }
       if (text === '/exit' || text === '/quit') {
@@ -692,6 +738,7 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
       }
       setInput('')
       setHint(null)
+      setScrollLines(0)
       setBusy(true)
       pushItem({ kind: 'user', text })
       try {
@@ -705,37 +752,13 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
     [busy, agent, handleExit, pushItem, showBusyHint],
   )
 
-  // ── Viewport: keep the transcript tail visible (Codex bottom-anchors). ──
-  // Rough per-item height estimates; good enough to avoid clipping the tail.
-  const estimateLines = (item) => {
-    const text =
-      item && typeof item.text === 'string'
-        ? item.text
-        : item && typeof item.output === 'string'
-          ? item.output
-          : ''
-    const wrapped = Math.max(1, Math.ceil(strWidth(text) / Math.max(1, width - 6)))
-    switch (item.kind) {
-      case 'user': return wrapped + 2
-      case 'assistant':
-        return Math.ceil(text.split('\n').length * 1.1) + (item.reasoning ? 3 : 0) + 2
-      case 'tool': return 2 + (item.output ? Math.min(wrapped, OUTPUT_HEAD + OUTPUT_TAIL + 2) : 0)
-      case 'divider': return 1
-      default: return Math.max(1, typeof item.text === 'string' ? item.text.split('\n').length : 1)
-    }
-  }
-  const chromeLines = (busy ? 1 : 0) + 1 + 1 + (items.length === 0 ? 1 : 0) + (todos.length > 0 ? 2 + todos.length : 0)
-  const available = Math.max(6, rows - chromeLines)
-  let visible = items
-  let total = 0
-  for (let i = items.length - 1; i >= 0; i--) {
-    const h = estimateLines(items[i])
-    if (total + h > available && i < items.length - 1) {
-      visible = items.slice(i + 1)
-      break
-    }
-    total += h
-  }
+  // ── Viewport: keep the transcript tail visible (bottom-anchored), with
+  // line-based scrolling on top (scrollLines = lines offset from the bottom).
+  const viewport = computeViewport({ items, rows, width, scrollLines, busy, todos, thinkingOpen })
+  const { visible, scrollLines: clampedLines, atBottom, step } = viewport
+  useEffect(() => {
+    viewportStep.current = step
+  }, [step])
 
   // ── Layout ───────────────────────────────────────────────────────────────────
   // Empty state: DeepSeek brand banner + info panel (Hermes-style), no
@@ -768,7 +791,7 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
             el(Box, { flexDirection: 'row' },
               el(Text, { dimColor: true }, 'model     '),
               el(Text, { bold: true }, model),
-              el(Text, { dimColor: true }, '  ·  TokenDance gateway')),
+              el(Text, { dimColor: true }, '  ·  StepFun Step Explore')),
             el(Box, { flexDirection: 'row' },
               el(Text, { dimColor: true }, 'directory '),
               el(Text, {}, shortCwd)),
@@ -783,12 +806,17 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
   const transcript = el(
     Box,
     { flexDirection: 'column', paddingLeft: 1, paddingRight: 1 },
-    el(TodoPanel, { todos }),
-    welcome,
-    ...visible.map((item, index) => el(ChatRow, { key: index, item, width, thinkingOpen, themeBg })),
-    el(StreamBlock, { key: 'stream', stream, width, thinkingOpen, themeBg }),
+    el(ErrorBoundary, { resetKey: items.length },
+      el(TodoPanel, { todos }),
+      welcome,
+      ...visible.map((item, index) => el(ChatRow, { key: index, item, width, thinkingOpen, themeBg })),
+      ...(clampedLines === 0
+        ? [el(StreamBlock, { key: 'stream', stream, width, thinkingOpen, themeBg })]
+        : []),
+    ),
   )
 
+  const idleSeconds = busy ? Math.floor((Date.now() - lastEventAt.current) / 1000) : 0
   const statusRow = busy
     ? el(
         Box,
@@ -796,9 +824,16 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
         el(BrailleSpinner),
         el(Text, { bold: true, color: ACCENT }, ' Working'),
         el(Text, { dimColor: true }, ` ${turnStart.current !== undefined ? fmtElapsedCompact(Date.now() - turnStart.current) : ''}`),
+        ...(idleSeconds >= 15
+          ? [el(Text, { dimColor: true, color: idleSeconds >= 60 ? ERR : undefined }, ` · 模型思考中 ${idleSeconds}s`)]
+          : []),
         el(Box, { flexGrow: 1 }),
         el(Text, { dimColor: true }, 'esc interrupt'),
       )
+    : null
+
+  const scrollHint = !atBottom
+    ? el(Text, { dimColor: true }, `  ↑ ${clampedLines} line${clampedLines === 1 ? '' : 's'} above · esc back to latest`)
     : null
 
   const inputRow = el(
@@ -826,10 +861,118 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
     { flexDirection: 'column', height: '100%' },
     el(Box, { flexGrow: 1, flexDirection: 'column', overflow: 'hidden' }, transcript),
     statusRow,
+    scrollHint,
     inputRow,
     hintRow,
   )
 }
 
+// ── Viewport math (pure, exported for tests) ───────────────────────────────
+
+/** Line count of a markdown body as rendered by markdownLines(). */
+function markdownLineCount(text, width) {
+  const avail = Math.max(1, width - 2)
+  let n = 0
+  for (const block of splitCodeBlocks(String(text))) {
+    n += wrapText(block.content, avail).length
+  }
+  return n
+}
+
+/**
+ * Rendered-line estimate for one transcript item, matching ChatRow layout.
+ * Overestimating slightly is fine (viewport clips the tail, never the head).
+ */
+export function estimateItemLines(item, width, thinkingOpen = true) {
+  const avail = Math.max(1, width - 6)
+  const text = item && typeof item.text === 'string' ? item.text : ''
+  const output = item && typeof item.output === 'string' ? item.output : ''
+  switch (item && item.kind) {
+    case 'user': {
+      let n = 0
+      for (const line of text.split('\n')) {
+        n += wrapText(line, Math.max(1, width - 2)).length
+      }
+      return Math.max(1, n)
+    }
+    case 'assistant': {
+      let n = 1 // marginTop
+      if (thinkingOpen && item.reasoning !== undefined && item.reasoning !== '') {
+        n += 1 + wrapText(String(item.reasoning), avail).length
+      }
+      if (text !== '') n += markdownLineCount(text, width)
+      if (item.usage) n += 1
+      return Math.max(1, n)
+    }
+    case 'tool': {
+      let n = 2 // marginTop + status head
+      const out = splitOutput(output)
+      if (out !== null) {
+        for (const line of out.lines) n += wrapText(line, avail).length
+        if (out.omitted > 0) n += 1
+      }
+      if (item.status === 'error' && item.error) n += 1
+      return Math.max(1, n)
+    }
+    case 'divider':
+      return 1
+    default:
+      return Math.max(1, wrapText(String(item && item.text ? item.text : ''), Math.max(1, width - 2)).length)
+  }
+}
+
+/**
+ * Compute the visible transcript slice for a scroll position.
+ * `scrollLines` is the offset in rendered lines from the bottom (0 = bottom
+ * anchored, i.e. the latest messages are visible).
+ */
+export function computeViewport({ items, rows, width, scrollLines, busy, todos = [], thinkingOpen = true }) {
+  const heights = items.map((item) => estimateItemLines(item, width, thinkingOpen))
+  const totalLines = heights.reduce((a, b) => a + b, 0)
+  // Chrome rows: status row (busy) + scroll hint + composer + footer +
+  // empty-state banner + todo panel.
+  const chromeLines =
+    (busy ? 1 : 0) +
+    (scrollLines > 0 ? 1 : 0) +
+    2 +
+    (items.length === 0 ? 1 : 0) +
+    (todos.length > 0 ? 2 + todos.length : 0)
+  const available = Math.max(6, rows - chromeLines)
+  const maxScroll = Math.max(0, totalLines - 1)
+  const lines = Math.min(Math.max(0, scrollLines), maxScroll)
+
+  let visible = []
+  if (items.length > 0) {
+    // Window bottom = the item that contains the `lines`-th line from bottom.
+    let endIdx = items.length - 1
+    let consumed = 0
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (consumed + heights[i] > lines) {
+        endIdx = i
+        break
+      }
+      consumed += heights[i]
+      if (i === 0) endIdx = 0
+    }
+    // Fill upward from the window bottom until the viewport is full.
+    let startIdx = endIdx
+    let total = 0
+    for (let i = endIdx; i >= 0; i--) {
+      if (total + heights[i] > available) break
+      total += heights[i]
+      startIdx = i
+    }
+    visible = items.slice(startIdx, endIdx + 1)
+  }
+  return {
+    visible,
+    scrollLines: lines,
+    maxScroll,
+    atBottom: lines === 0,
+    atTop: lines >= maxScroll,
+    step: Math.max(4, Math.floor(available / 2)),
+  }
+}
+
 // Pure helpers, exported for tests (no Ink dependencies beyond React elements).
-export { wrapText, truncate, splitOutput, stripAnsi, userMessageBg, codeChipBg, markdownLines }
+export { wrapText, truncate, splitOutput, stripAnsi, userMessageBg, codeChipBg, markdownLines, splitCodeBlocks }
