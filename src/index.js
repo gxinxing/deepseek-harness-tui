@@ -84,14 +84,39 @@ async function run(ctx, exit) {
   // Events below this seq are construction seed history, not chat.
   const firstSeq = agent.session.seq
 
+  // Debounced durability flush while a turn is running: a long or stuck turn
+  // must be inspectable on disk without waiting for turn/end. The immediate
+  // turn/end flush below remains the boundary checkpoint.
+  let flushTimer = undefined
+  let flushing = false
+  const scheduleFlush = () => {
+    if (flushTimer !== undefined || flushing) return
+    flushTimer = setTimeout(() => {
+      flushTimer = undefined
+      flushing = true
+      sessions
+        .flush(agent.session)
+        .catch((error) => {
+          console.error(`dsh-tui: session flush failed: ${error instanceof Error ? error.message : String(error)}`)
+        })
+        .finally(() => {
+          flushing = false
+        })
+    }, 5000)
+  }
+
   // Live append feed: forward this session's events to the UI and persist the
   // log at each turn boundary (fire-and-forget; flush is caller-owned).
   ctx.on('session/event', (session, event) => {
     if (session.id !== agent.session.id) return
-    if (event.seq >= firstSeq && event.type === 'turn/end') {
-      void sessions.flush(agent.session).catch((error) => {
-        console.error(`dsh-tui: session flush failed: ${error instanceof Error ? error.message : String(error)}`)
-      })
+    if (event.seq >= firstSeq) {
+      if (event.type === 'turn/end') {
+        void sessions.flush(agent.session).catch((error) => {
+          console.error(`dsh-tui: session flush failed: ${error instanceof Error ? error.message : String(error)}`)
+        })
+      } else if (event.type === 'turn/start' || event.type === 'tool/call' || event.type === 'tool/result') {
+        scheduleFlush()
+      }
     }
     forward(event)
   })
@@ -101,6 +126,8 @@ async function run(ctx, exit) {
   const onExit = () => {
     if (exited) return
     exited = true
+    // Final durability checkpoint before the harness exits.
+    void sessions.flush(agent.session).catch(() => {})
     if (app) {
       try {
         app.unmount()

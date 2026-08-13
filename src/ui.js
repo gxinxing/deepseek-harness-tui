@@ -67,10 +67,21 @@ const MAX_RESULT_PREVIEW = 300
 const OUTPUT_HEAD = 10 // first output lines kept per tool result
 const OUTPUT_TAIL = 6 // last output lines kept per tool result
 
+// ── Width chain (keep in sync with ChatRow layout) ───────────────────────
+// App width = columns - 2 (transcript side padding), so rows render at
+// `width - 2`. User lines add 1+1 padding; assistant body lines carry a
+// 2-column `• ` / `  ` gutter. Estimates must use the same arithmetic or the
+// bottom-anchored viewport clips the last line of long messages.
+const TRANSCRIPT_PAD = 2
+const USER_LINE_PAD = 2
+const USER_PREFIX_W = 2 // '▌ '
+const MARKDOWN_GUTTER = 2 // '• ' on the first line, '  ' afterwards
+
 const HELP_TEXT = [
   'commands:',
   '  /help         show this help',
   '  /clear        clear the transcript',
+  '  /retry        re-send the last message',
   '  /exit, /quit  quit dsh tui',
   'keys:',
   '  ↑ / ↓          scroll transcript',
@@ -290,7 +301,11 @@ function renderInline(text, keyPrefix, chipBg) {
  */
 function markdownLines(text, width, indent = 2, chipBg = '#333333', prefix = '') {
   const pad = ' '.repeat(indent)
-  const avail = Math.max(1, width - indent)
+  // `width` is the available content width; the gutter must come out of it or
+  // every rendered line is one wider than the estimate and wraps a second,
+  // flush-left line (misaligned continuation, clipped tail).
+  const gutterW = prefix !== '' ? strWidth(prefix) : indent
+  const avail = Math.max(1, width - gutterW)
   const out = []
   let blockKey = 0
   let first = true
@@ -386,7 +401,7 @@ function ChatRow({ item, width, thinkingOpen, themeBg }) {
       return el(
         Box,
         { flexDirection: 'column', backgroundColor: userMessageBg(themeBg), paddingY: 0, flexShrink: 0 },
-        ...plainLines(item.text, width - 2, '▌ ', 2).map((line, i) =>
+        ...plainLines(item.text, width - TRANSCRIPT_PAD - USER_LINE_PAD, '▌ ', 2).map((line, i) =>
           el(Box, { key: `u${i}`, paddingLeft: 1, paddingRight: 1 }, line)),
       )
     }
@@ -403,7 +418,7 @@ function ChatRow({ item, width, thinkingOpen, themeBg }) {
       }
       if (item.text !== '') {
         lines.push(
-          el(Box, { key: 'body', flexDirection: 'column' }, ...markdownLines(item.text, width, 2, codeChipBg(themeBg), '• ')),
+          el(Box, { key: 'body', flexDirection: 'column' }, ...markdownLines(item.text, width - TRANSCRIPT_PAD, 2, codeChipBg(themeBg), '• ')),
         )
       }
       if (item.usage) {
@@ -418,7 +433,9 @@ function ChatRow({ item, width, thinkingOpen, themeBg }) {
       const mark = failed ? el(Text, { key: 'm', color: ERR, bold: true }, '✗') : done ? el(Text, { key: 'm', color: OK, bold: true }, '✓') : el(BrailleSpinner, { key: 'm' })
       const label = done || failed ? '' : 'Running '
       const seconds = typeof item.seconds === 'number' ? ` • ${fmtDuration(item.seconds * 1000)}` : ''
-      const cmd = `${item.name} ${truncate(item.args, MAX_TOOL_ARGS)}`.trim()
+      // Cap the head to one rendered line: a wrapping head would break the
+      // aligned look and the one-line estimate.
+      const cmd = truncate(`${item.name} ${truncate(item.args, MAX_TOOL_ARGS)}`.trim(), Math.max(12, width - 16))
       const outputLines = splitOutput(item.output)
       const rows = [
         el(Text, { key: 'head', wrap: 'wrap' },
@@ -440,7 +457,8 @@ function ChatRow({ item, width, thinkingOpen, themeBg }) {
         }
       }
       if (failed && item.error) {
-        rows.push(el(Text, { key: 'err', color: ERR, wrap: 'wrap' }, `    error: ${item.error.code ?? item.error.name ?? 'unknown'}`))
+        const errText = `    error: ${item.error.code ?? item.error.name ?? 'unknown'}`
+        rows.push(el(Text, { key: 'err', color: ERR, wrap: 'wrap' }, truncate(errText, Math.max(12, width - 2))))
       }
       return el(Box, { flexDirection: 'column', marginTop: 1, flexShrink: 0 }, ...rows)
     }
@@ -465,7 +483,7 @@ function StreamBlock({ stream, width, thinkingOpen, themeBg }) {
   }
   if (stream.text !== '') {
     children.push(
-      el(Box, { key: 'text', flexDirection: 'column', marginTop: 1 }, ...markdownLines(stream.text, width, 2, codeChipBg(themeBg), '• ')),
+      el(Box, { key: 'text', flexDirection: 'column', marginTop: 1 }, ...markdownLines(stream.text, width - TRANSCRIPT_PAD, 2, codeChipBg(themeBg), '• ')),
     )
   }
   if (stream.tool !== null) {
@@ -516,7 +534,10 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
   const usageRef = useRef(null)
   const hintTimer = useRef(undefined)
   const exiting = useRef(false)
+  const lastUserText = useRef('')
   const toolStarts = useRef(new Map())
+  const runningTools = useRef(new Map()) // callId → { name, args } while the row is live
+  const toolResults = useRef(new Map()) // callId → done info (out-of-order guard)
   const turnStart = useRef(undefined)
   const lastEventAt = useRef(Date.now())
   const { exit: inkExit } = useApp()
@@ -543,14 +564,16 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
     setHint(null)
   }, [])
 
-  const showBusyHint = useCallback(() => {
-    setHint('(busy — waiting for the model)')
+  const flashHint = useCallback((text, ms = 1500) => {
+    setHint(text)
     if (hintTimer.current !== undefined) clearTimeout(hintTimer.current)
     hintTimer.current = setTimeout(() => {
       hintTimer.current = undefined
       setHint(null)
-    }, 1500)
+    }, ms)
   }, [])
+
+  const showBusyHint = useCallback(() => flashHint('(busy — waiting for the model)'), [flashHint])
 
   /** Exit the Ink app, then request the harness process exit. Never twice. */
   const handleExit = useCallback(() => {
@@ -586,6 +609,8 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
           lastEventAt.current = Date.now()
           setScrollLines(0)
           setStream({ reasoning: '', text: '', tool: null })
+          runningTools.current.clear()
+          toolResults.current.clear()
           // Mirror the harness todos projection: cleared by the next turn/start
           // (turn/end keeps the finished checklist visible).
           setTodos([])
@@ -597,10 +622,35 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
           clearHint()
           const reason = data.reason && typeof data.reason === 'object' ? data.reason : {}
           if (data.usage && typeof data.usage === 'object') usageRef.current = data.usage
+          // Close any tool rows the harness never finished: a dangling spinner
+          // reads as a stuck TUI even when the turn itself ended.
+          const dangling = [...runningTools.current.entries()]
+          runningTools.current.clear()
+          if (dangling.length > 0) {
+            const danglingIds = new Set(dangling.map(([id]) => id))
+            const closed = reason.kind === 'completed' ? 'done' : 'error'
+            setItems((prev) =>
+              prev.map((item) =>
+                item.kind === 'tool' && item.status === 'running' && danglingIds.has(item.callId)
+                  ? {
+                      ...item,
+                      status: closed,
+                      error:
+                        closed === 'error'
+                          ? { name: 'interrupted', code: 'turn-ended' }
+                          : undefined,
+                    }
+                  : item,
+              ),
+            )
+          }
           const label = reasonText(reason)
           const usageLine = usageText(usageRef.current)
-          const text = usageLine === '' ? label : `${label} · ${usageLine}`
           const isError = reason.kind === 'error'
+          const parts = [label]
+          if (usageLine !== '') parts.push(usageLine)
+          if (isError) parts.push('/retry 重试')
+          const text = parts.join(' · ')
           setItems((prev) => {
             const divider = prev.length === 0 ? [] : [{ kind: 'divider' }]
             return [...prev, ...divider, { kind: 'status', text, error: isError }]
@@ -643,14 +693,19 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
         case 'tool/call': {
           const callId = typeof data.callId === 'string' ? data.callId : `t${Date.now()}`
           setStream((prev) => (prev.tool ? { ...prev, tool: null } : prev))
-          toolStarts.current.set(callId, Date.now())
-          pushItem({
-            kind: 'tool',
-            callId,
-            name: typeof data.name === 'string' ? data.name : 'tool',
-            args: typeof data.arguments === 'string' ? data.arguments : '',
-            status: 'running',
-          })
+          const name = typeof data.name === 'string' ? data.name : 'tool'
+          const args = typeof data.arguments === 'string' ? data.arguments : ''
+          const pre = toolResults.current.get(callId)
+          if (pre !== undefined) {
+            // The result arrived before its call row (out-of-order stream):
+            // render the row already done instead of leaving a live spinner.
+            toolResults.current.delete(callId)
+            pushItem({ kind: 'tool', callId, name, args, ...pre })
+          } else {
+            toolStarts.current.set(callId, Date.now())
+            runningTools.current.set(callId, { name, args })
+            pushItem({ kind: 'tool', callId, name, args, status: 'running' })
+          }
           break
         }
         case 'tool/result': {
@@ -670,16 +725,29 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
           if (callId !== undefined) toolStarts.current.delete(callId)
           const seconds = start !== undefined ? (Date.now() - start) / 1000 : undefined
           const text = toolResultText(message)
+          const info = {
+            status: isError ? 'error' : 'done',
+            seconds,
+            output: text,
+            error: isError ? { name: errorInfo?.name ?? 'tool error', code: errorInfo?.code } : undefined,
+          }
+          let target = callId
+          if (target === undefined) {
+            // No id on the wire: patch the oldest still-running tool row.
+            const first = runningTools.current.keys().next()
+            if (!first.done) target = first.value
+          }
+          if (target !== undefined) runningTools.current.delete(target)
+          // Stash the outcome so a late tool/call (out-of-order stream) can
+          // render the row done; capped so the guard cannot grow unbounded.
+          toolResults.current.set(target ?? `t${Date.now()}`, info)
+          if (toolResults.current.size > 32) {
+            toolResults.current.delete(toolResults.current.keys().next().value)
+          }
           setItems((prev) =>
             prev.map((item) =>
-              item.kind === 'tool' && callId !== undefined && item.callId === callId
-                ? {
-                    ...item,
-                    status: isError ? 'error' : 'done',
-                    seconds,
-                    output: text,
-                    error: isError ? { name: errorInfo?.name ?? 'tool error', code: errorInfo?.code } : undefined,
-                  }
+              item.kind === 'tool' && target !== undefined && item.callId === target
+                ? { ...item, ...info }
                 : item,
             ),
           )
@@ -704,6 +772,31 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
     return () => onEvent(null)
   }, [onEvent, handleEvent])
 
+  const send = useCallback(
+    (text) => {
+      const value = typeof text === 'string' ? text.trim() : ''
+      if (value === '') return
+      if (busy) {
+        showBusyHint()
+        return
+      }
+      setInput('')
+      setHint(null)
+      setScrollLines(0)
+      setBusy(true)
+      lastUserText.current = value
+      pushItem({ kind: 'user', text: value })
+      try {
+        // Fire-and-forget: session events drive the UI, not this promise.
+        agent.followup(createUserMessage({ content: [{ type: 'text', text: value }], source: { kind: 'user' } }))
+      } catch (error) {
+        setBusy(false)
+        pushItem({ kind: 'status', text: `✗ ${error instanceof Error ? error.message : String(error)}`, error: true })
+      }
+    },
+    [busy, agent, pushItem, showBusyHint],
+  )
+
   const handleSubmit = useCallback(
     (value) => {
       const text = typeof value === 'string' ? value.trim() : ''
@@ -724,6 +817,8 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
         setStream({ reasoning: '', text: '', tool: null })
         usageRef.current = null
         toolStarts.current = new Map()
+        runningTools.current = new Map()
+        toolResults.current = new Map()
         setScrollLines(0)
         return
       }
@@ -732,24 +827,24 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
         handleExit()
         return
       }
+      if (text === '/retry') {
+        setInput('')
+        if (busy) {
+          showBusyHint()
+        } else if (lastUserText.current === '') {
+          flashHint('(nothing to retry yet)')
+        } else {
+          send(lastUserText.current)
+        }
+        return
+      }
       if (busy) {
         showBusyHint()
         return
       }
-      setInput('')
-      setHint(null)
-      setScrollLines(0)
-      setBusy(true)
-      pushItem({ kind: 'user', text })
-      try {
-        // Fire-and-forget: session events drive the UI, not this promise.
-        agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
-      } catch (error) {
-        setBusy(false)
-        pushItem({ kind: 'status', text: `✗ ${error instanceof Error ? error.message : String(error)}`, error: true })
-      }
+      send(text)
     },
-    [busy, agent, handleExit, pushItem, showBusyHint],
+    [busy, handleExit, send, showBusyHint, flashHint],
   )
 
   // ── Viewport: keep the transcript tail visible (bottom-anchored), with
@@ -871,7 +966,7 @@ export function App({ agent, onEvent, onExit, onInterrupt, firstSeq = 0, model =
 
 /** Line count of a markdown body as rendered by markdownLines(). */
 function markdownLineCount(text, width) {
-  const avail = Math.max(1, width - 2)
+  const avail = Math.max(1, width - TRANSCRIPT_PAD - MARKDOWN_GUTTER)
   let n = 0
   for (const block of splitCodeBlocks(String(text))) {
     n += wrapText(block.content, avail).length
@@ -891,7 +986,7 @@ export function estimateItemLines(item, width, thinkingOpen = true) {
     case 'user': {
       let n = 0
       for (const line of text.split('\n')) {
-        n += wrapText(line, Math.max(1, width - 2)).length
+        n += wrapText(line, Math.max(1, width - TRANSCRIPT_PAD - USER_LINE_PAD - USER_PREFIX_W)).length
       }
       return Math.max(1, n)
     }

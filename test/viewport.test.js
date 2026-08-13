@@ -165,3 +165,34 @@ describe('computeViewport', () => {
     assert.equal(v.atBottom, true)
   })
 })
+
+// ── Width-chain alignment (render vs estimate) ────────────────────────────
+// ChatRow renders user lines at `width - TRANSCRIPT_PAD - USER_LINE_PAD -
+// USER_PREFIX_W` (width - 6) and assistant markdown at
+// `width - TRANSCRIPT_PAD - MARKDOWN_GUTTER` (width - 4). The estimates must
+// wrap at the same widths or the bottom-anchored viewport clips the last line
+// of long messages.
+
+describe('width chain stays aligned with the render layout', () => {
+  test('user text wraps at width - 6', () => {
+    const one = estimateItemLines({ kind: 'user', text: 'x'.repeat(74) }, 80)
+    const two = estimateItemLines({ kind: 'user', text: 'x'.repeat(75) }, 80)
+    assert.equal(one, 1, '74 chars fits one rendered line at width 80')
+    assert.equal(two, 2, '75 chars wraps to two rendered lines at width 80')
+  })
+
+  test('assistant markdown wraps at width - 4 (gutter + transcript padding)', () => {
+    const one = estimateItemLines({ kind: 'assistant', text: 'x'.repeat(76) }, 80)
+    const two = estimateItemLines({ kind: 'assistant', text: 'x'.repeat(77) }, 80)
+    assert.equal(one, 2, '76 chars fits one body line + marginTop')
+    assert.equal(two, 3, '77 chars wraps to two body lines + marginTop')
+  })
+
+  test('narrow widths still align the same chain', () => {
+    // 30 columns → user avail 24, assistant body avail 26.
+    assert.equal(estimateItemLines({ kind: 'user', text: 'x'.repeat(24) }, 30), 1)
+    assert.equal(estimateItemLines({ kind: 'user', text: 'x'.repeat(25) }, 30), 2)
+    assert.equal(estimateItemLines({ kind: 'assistant', text: 'x'.repeat(26) }, 30), 2)
+    assert.equal(estimateItemLines({ kind: 'assistant', text: 'x'.repeat(27) }, 30), 3)
+  })
+})
