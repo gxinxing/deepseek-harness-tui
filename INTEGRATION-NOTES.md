@@ -554,7 +554,7 @@ VERDICT: every appended event on a store-entered session emits `session/event` (
 
 ## Cross-cutting notes for the tui plan
 
-- Bundle order `["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-headless", "deepseek-harness-tui"]` matches the flatten-append semantics: base rows -> headless rows -> tui rows, and tui's disables target headless rows correctly (Q1). The profile on disk currently lists only base; the bundles list must be updated (reconcile appends `deepseek-harness-tui` automatically, but `@deepseek-ai/dsh-headless` must be added explicitly, e.g. via `dsh plugin --profile tui add @deepseek-ai/dsh-headless`).
+- Bundle order `["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-headless", "deepseek-harness-tui"]` matches the flatten-append semantics: base rows -> headless rows -> tui rows, and tui's disables target headless rows correctly (Q1). **Current state (2026-08-14):** the `tui` profile is fully wired — `dsh plugin --profile tui add @deepseek-ai/dsh-headless` and `dsh plugin --profile tui add /Users/simon/Projects/deepseek-harness-tui` were both run and verified live (`dsh --profile tui` boots the Ink UI end-to-end with the TokenDance route).
 - The tui-runner plugin should follow `packages/bundle/headless/src/index.ts:96-137` verbatim in shape: `await ctx.get('loader')?.await()` first, read `appExit` via `ctx.get('appExit')`, drive `agents.create(...)` with `agentOptions: { provider, model }` from `agentDefaultModel.currentSelection()`, then `whenIdle`/`followup`/`flush`/`exit`.
 - A config-less row needs no `Config` export (Q5); the headless pattern of exporting `Config` + `inject: [headlessStartup]` is optional — `!!js` expressions in `config` are supported by the patch parser (`packages/boot/app-boot/src/index.ts:304-311`).
 - `llm-deepseek` config patch (Q3a) is proven end-to-end by the headless profile; the same `cordis.patch.yml` shape works in tui.
@@ -574,3 +574,50 @@ Forwarded via `session/event` after commit; `data` is a deep copy.
 - `turn/end`: `{ turn, reason: { kind: 'completed' | 'aborted' | 'error' | … }, usage? }`
 
 The `tool/result` shape changed the pairing logic in `src/ui.js` (callId read from `message.source.callId`); keep defensive access — the harness iterates fast and field names may shift between rc builds.
+
+---
+
+## 9. UI layer (v2, 2026-08-14) — design & event mapping
+
+The UI is a single Ink app (`src/ui.js`, ~800 lines) mounted by the `tui-runner` plugin (`src/index.js`) with `render(<App …/>, { stdout })`. The App bridges the Cordis event bus via a `forward` handler installed on mount; every `session/event` is mapped to UI state. This section documents the v2 visual design and the exact event → UI mapping, both verified live on 2026-08-14 (rc.6, TokenDance route).
+
+### Empty state (brand banner)
+
+Inspired by Hermes Agent's TUI (`ui-tui`, also Ink) and Codex CLI:
+
+- **DeepSeek logo** — 6-line ANSI Shadow art ("DeepSeek"), gradient-colored `#4D6BFE → #B5C6FF` (brand blue ramp), centered.
+- **Tagline** — `DeepSeek Harness · terminal AI chat for the DeepSeek Harness` (bold blue + dim).
+- **Info panel** — single-line border (`borderStyle: 'single'`, `borderColor: '#4D6BFE'`) with three rows: `model` (bold) · `directory` (short cwd) · `commands` (`/help · /clear · /exit`).
+- **Hint line** — `press /help for keys · ctrl + c to quit` (dim).
+- **Composer** — `❯ ` prompt (cyan), placeholder `Ask anything`, via `ink-text-input` 6.0.0.
+- The banner only renders when the transcript is empty (`items.length === 0 && no stream/tool state`) — it disappears on the first user message.
+
+### Event → UI mapping (src/ui.js `handleEvent`)
+
+| event type | UI effect |
+| --- | --- |
+| `turn/start` | busy on, reset stream/todos/usage; start elapsed timer |
+| `turn/end` | busy off; `✓ completed · usage: Nin Nout Ncache` (or `✗` label); reason from `data.reason.kind`, usage from `data.usage` |
+| `assistant/message` | reasoning → thinking block (folds via `ctrl + t`); text → markdown stream; tool-call blocks → tool cell |
+| `tool/start` | tool cell `⠋ Running <cmd>` (pair by `callId`) |
+| `tool/result` | cell settles `✓ <cmd> • <s>` / `✗`; output merged dimmed, truncated head+tail; `error` from `data.error` if present |
+| `tool/todo` | todo panel: `◐` in-progress (cyan), `☐` pending (dim), `✓` done (green); cleared on `turn/start` |
+
+Key pairing: `tool/result` carries **no top-level `callId`** — read `message.source.callId` (or `message.content[0].toolCallId`); error flag is `message.content[0].isError` (boolean). Esc during a live turn calls `agent.cancel({ kind: 'user' })`; `ctrl + c` exits exactly once via `appExit`.
+
+### Theme derivation (src/theme.js)
+
+`probeTerminalBg()` runs **before** Ink mounts (Ink's key parser would otherwise swallow the OSC 11 response). Since 2026-08-14 the regex requires the ST/BEL terminator (`(?:\x1b\\|\x07)`) so no stray `ESC \` bytes reach Ink, and 16-bit channels are converted by taking the high byte. `DSH_TUI_BG` forces a theme for testing.
+
+### Input quirk observed (tmux send-keys only)
+
+Sending text + Enter in a single `tmux send-keys '…' Enter` call drops the Enter — the message stays in the composer and needs a second Enter. Sending the text and Enter as separate keypresses (or a real keyboard) always submits. Ink's `useInput` + `ink-text-input` 6.0.0 handle `key.return` correctly (`if (key.return) onSubmit(originalValue)`), so this is a tmux send-keys batching artifact, not a UI bug — no fix applied.
+
+### Status line & footer
+
+- Busy: `⠋ Working <elapsed> · esc interrupt` (braille spinner + compact timer).
+- Footer (always): `model · short-cwd` (dim) left, key hints right (`ctrl + t: show/hide thinking`, `ctrl + c quit`).
+
+### TokenDance prerequisite fix
+
+Applied 2026-08-13 to the global install (`~/.npm-global/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js:321-322`): empty-string guards on `call.id`/`call.function?.name`. Verified against the rc.6 tarball (diff is exactly those two lines) and with a behavior-level test through the real `DeepSeekAdapter.stream()` path (empty frames no longer clobber `callId`/`name`). **Lost on `dsh` upgrade — re-apply.**
