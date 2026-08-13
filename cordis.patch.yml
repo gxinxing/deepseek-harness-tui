@@ -1,0 +1,7 @@
+- id: headless-startup
+  disabled: true
+- id: headless-runner
+  disabled: true
+- insert:
+    - id: tui-runner
+      name: 'dsh-tui'
