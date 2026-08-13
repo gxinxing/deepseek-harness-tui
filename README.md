@@ -76,6 +76,74 @@ The provider is registered in `~/.dsh/settings.yaml` (`llm-pi-ai.providers.token
 >
 > Applied 2026-08-13 on this machine. The edit lives in the global dsh install and is **lost on `dsh` upgrade** — re-apply after upgrading (worth an upstream PR).
 
+## Self-inspection · Self-repair · Self-update loop
+
+This project ships a complete automated quality gate — **inspect → repair → update — closed loop**:
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  Local dev   │    │  Pre-commit  │    │  CI / PR     │
+│  pnpm check  │───▶│  lint-staged │───▶│  ci.yml      │
+│  (one-shot)  │    │  (git commit)│    │  (GitHub)    │
+└──────────────┘    └──────────────┘    └──────────────┘
+      ▲                                       │
+      │                                       ▼
+      │                            ┌──────────────────────┐
+      │                            │  lint + format:check  │
+      │                            │  + test (Node 20/22)  │
+      │                            └──────────────────────┘
+      │                                       │
+      ▼                                       ▼
+┌──────────────────────────────────────────────────────────┐
+│          deps.yml  (auto-scan every Mon 06:00 UTC)        │
+│  Update found → auto PR → review & merge → closed loop   │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Local inspection
+
+```bash
+pnpm check        # all-in-one: lint → format:check → test
+pnpm lint         # code quality (ESLint)
+pnpm format:check # style gate (Prettier)
+pnpm test         # unit tests (Node built-in runner, 57 cases)
+```
+
+### Local self-repair
+
+```bash
+pnpm lint:fix     # auto-fix all fixable ESLint issues
+pnpm format       # auto-format all source files
+```
+
+**On every `git commit`** (husky + lint-staged):
+- staged `*.js` files → `prettier --write` + `eslint --fix` before the commit lands
+- committed code is always clean — no manual `pnpm format` needed
+
+### Dependency self-update
+
+```bash
+pnpm deps:check   # scan all deps for available upgrades (grouped + audit)
+pnpm deps:update  # bump package.json to latest compatible + pnpm install
+```
+
+**GitHub Actions auto-runs** (`.github/workflows/deps.yml`):
+- Every Monday 06:00 UTC
+- Creates a `deps/auto-update-YYYYMMDD` branch + PR when updates exist
+- Manual trigger available from the GitHub Actions tab
+
+### CI gate (`.github/workflows/ci.yml`)
+
+| Trigger | Job | Matrix |
+|---------|-----|--------|
+| `push` / `pull_request` to main | `inspect` | Node 20 + Node 22 |
+| | lint | ✅ |
+| | format:check | ✅ |
+| | test (57 cases) | ✅ |
+| | coverage upload | Node 22 only |
+
+Any stage failure blocks the merge — main is always green.
+
 ## Contributing
 
 Issues and PRs are welcome. Good first tasks: upstream the two runtime patches (TokenDance tool-call guard, grep permission-error tolerance), add a screenshot for light themes, or port the welcome banner to other model providers. See [INTEGRATION-NOTES.md](INTEGRATION-NOTES.md) before touching the event bridge.

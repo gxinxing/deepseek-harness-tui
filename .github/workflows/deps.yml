@@ -1,0 +1,85 @@
+# Self-update: check for dependency upgrades on a schedule + on push to main
+name: Dependency Update
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:   # allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  deps:
+    name: Check & Update Dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install GitHub CLI
+        uses: shivammathur/setup-gh@v3
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Check for updates (self-update scan)
+        run: pnpm deps:check > /tmp/ncu-report.txt 2>&1; cat /tmp/ncu-report.txt; echo "exit=$?"
+
+      - name: Open PR with dependency updates
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Update package.json in-place
+          pnpm deps:update
+
+          # Check for changes BEFORE staging (git diff --quiet checks unstaged working-tree changes)
+          if git diff --quiet package.json pnpm-lock.yaml; then
+            echo "No dependency updates available."
+            exit 0
+          fi
+
+          # Format after bumping
+          pnpm format
+
+          BRANCH="deps/auto-update-$(date +%Y%m%d)"
+          git config user.name  "deps-bot[bot]"
+          git config user.email "deps-bot[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add package.json pnpm-lock.yaml
+          git commit -m "chore: auto-update dependencies
+
+            Scanned by pnpm deps:check on $(date -u +%Y-%m-%d)
+            Source: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Push and open PR
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: auto-update dependencies ($(date -u +%Y-%m-%d))" \
+            --body "Automated dependency update via npm-check-updates.
+
+            Run: \`pnpm deps:check && pnpm deps:update\`
+            Scheduled: every Monday 06:00 UTC" \
+            --label "dependencies" \
+            --base "${{ github.base_ref }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

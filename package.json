@@ -10,16 +10,37 @@
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
-  "scripts": {
-    "test": "node --test test/*.test.js"
-  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
   },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "test": "node --test test/*.js"
+    "test": "node --test test/*.js",
+    "test:coverage": "node --experimental-vm-modules --test --experimental-test-coverage test/*.js",
+    "lint": "eslint src test --ext .js",
+    "lint:fix": "eslint src test --ext .js --fix",
+    "format": "prettier --write 'src/**/*.js' 'test/**/*.js'",
+    "format:check": "prettier --check 'src/**/*.js' 'test/**/*.js'",
+    "typecheck": "echo 'no typecheck configured for JS-only project'",
+    "check": "pnpm lint && pnpm format:check && pnpm test",
+    "deps:check": "npm-check-updates --format group && npm-check-updates --audit",
+    "deps:update": "npm-check-updates -u && pnpm install",
+    "deps:audit": "pnpm audit --audit-level=moderate",
+    "prepare": "husky install",
+    "prepublishOnly": "pnpm check"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-unicorn": "^55.0.0",
+    "husky": "^9.1.0",
+    "lint-staged": "^15.0.0",
+    "npm-check-updates": "^17.0.0",
+    "prettier": "^3.3.0"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -30,5 +51,15 @@
     "ink": "^7.1.1",
     "ink-text-input": "^6.0.0",
     "react": "^19.2.8"
+  },
+  "lint-staged": {
+    "*.js": [
+      "prettier --write",
+      "eslint --fix"
+    ]
+  },
+  "volta": {
+    "node": ">=20 <23",
+    "pnpm": ">=9"
   }
 }

@@ -6,19 +6,19 @@
  * Ink chat UI instead of printing a single answer.
  */
 
-import { randomUUID } from 'node:crypto'
-import React from 'react'
-import { probeTerminalBg } from './theme.js'
-import { render } from 'ink'
-import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import { SessionId } from '@deepseek-ai/dsh-session'
-import { App } from './ui.js'
+import { randomUUID } from 'node:crypto';
+import React from 'react';
+import { probeTerminalBg } from './theme.js';
+import { render } from 'ink';
+import { installModelSelection } from '@deepseek-ai/dsh-agent';
+import { SessionId } from '@deepseek-ai/dsh-session';
+import { App } from './ui.js';
 
 /** Stable Cordis plugin name (bundle row id: tui-runner). */
-export const name = 'tui-runner'
+export const name = 'tui-runner';
 
 /** Core services required before the interactive session can start. */
-export const inject = ['agentDefaultModel', 'agents', 'sessions']
+export const inject = ['agentDefaultModel', 'agents', 'sessions'];
 
 /**
  * Bridge between the Cordis event bus (non-React) and the Ink tree. The App
@@ -26,13 +26,15 @@ export const inject = ['agentDefaultModel', 'agents', 'sessions']
  * once mounted; every matching `session/event` is then forwarded to it.
  * Events are dropped until the App mounts.
  */
-let uiHandler = undefined
+let uiHandler = undefined;
 function forward(eventOrHandler) {
   if (typeof eventOrHandler === 'function' || eventOrHandler == null) {
-    uiHandler = typeof eventOrHandler === 'function' ? eventOrHandler : undefined
-    return
+    uiHandler = typeof eventOrHandler === 'function' ? eventOrHandler : undefined;
+    return;
   }
-  if (typeof uiHandler === 'function') uiHandler(eventOrHandler)
+  if (typeof uiHandler === 'function') {
+    uiHandler(eventOrHandler);
+  }
 }
 
 /**
@@ -40,97 +42,112 @@ function forward(eventOrHandler) {
  * @param ctx - plugin context carrying core services and the launcher-provided exit.
  */
 export function apply(ctx) {
-
   // appExit is an optional host value provided by the launcher — read it
   // through the global service store, never the property proxy.
-  const exit = ctx.get('appExit')
+  const exit = ctx.get('appExit');
   if (exit === undefined) {
-    throw new Error('tui-runner: the launcher must provide ctx.appExit before the tree mounts')
+    throw new Error('tui-runner: the launcher must provide ctx.appExit before the tree mounts');
   }
-  void run(ctx, exit).catch((error) => {
-    console.error(`dsh-tui: ${error instanceof Error ? error.message : String(error)}`)
-    exit(1)
-  })
+  void run(ctx, exit).catch(error => {
+    console.error(`dsh-tui: ${error instanceof Error ? error.message : String(error)}`);
+    exit(1);
+  });
 }
 
 /** Create the agent and run the chat until the user quits. */
 async function run(ctx, exit) {
   // Probe the terminal background BEFORE Ink mounts: Ink's key parser would
   // otherwise read the OSC 11 response as keystrokes and type garbage.
-  const themeBg = await probeTerminalBg()
+  const themeBg = await probeTerminalBg();
 
   // Loader siblings mount concurrently; await the complete composition before
   // creating an Agent so its scoped tools are not half-composed.
-  await ctx.get('loader')?.await()
+  await ctx.get('loader')?.await();
 
-  const agents = ctx.get('agents')
-  const defaultModel = ctx.get('agentDefaultModel')
-  const sessions = ctx.get('sessions')
+  const agents = ctx.get('agents');
+  const defaultModel = ctx.get('agentDefaultModel');
+  const sessions = ctx.get('sessions');
   // Early process shutdown can dispose the tree while settlement is pending.
-  if (agents === undefined || defaultModel === undefined || sessions === undefined) return
+  if (agents === undefined || defaultModel === undefined || sessions === undefined) {
+    return;
+  }
 
   // Create the agent exactly like the headless runner does.
-  const selection = defaultModel.currentSelection()
+  const selection = defaultModel.currentSelection();
   const { agent } = await agents.create({
     sessionId: SessionId(`session-${randomUUID()}`),
     meta: { cwd: process.cwd() },
     agentOptions: { provider: selection.provider, model: selection.model },
-    setup: (agentCtx) => {
-      const selected = { current: selection, assembled: undefined }
-      installModelSelection(agentCtx, selected)
+    setup: agentCtx => {
+      const selected = { current: selection, assembled: undefined };
+      installModelSelection(agentCtx, selected);
     },
-  })
-  await agent.whenIdle()
+  });
+  await agent.whenIdle();
   // Events below this seq are construction seed history, not chat.
-  const firstSeq = agent.session.seq
+  const firstSeq = agent.session.seq;
 
   // Debounced durability flush while a turn is running: a long or stuck turn
   // must be inspectable on disk without waiting for turn/end. The immediate
   // turn/end flush below remains the boundary checkpoint.
-  let flushTimer = undefined
-  let flushing = false
+  let flushTimer = undefined;
+  let flushing = false;
   const scheduleFlush = () => {
-    if (flushTimer !== undefined || flushing) return
+    if (flushTimer !== undefined || flushing) {
+      return;
+    }
     flushTimer = setTimeout(() => {
-      flushTimer = undefined
-      flushing = true
+      flushTimer = undefined;
+      flushing = true;
       sessions
         .flush(agent.session)
-        .catch((error) => {
-          console.error(`dsh-tui: session flush failed: ${error instanceof Error ? error.message : String(error)}`)
+        .catch(error => {
+          console.error(
+            `dsh-tui: session flush failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
         })
         .finally(() => {
-          flushing = false
-        })
-    }, 5000)
-  }
+          flushing = false;
+        });
+    }, 5000);
+  };
 
   // Live append feed: forward this session's events to the UI and persist the
   // log at each turn boundary (fire-and-forget; flush is caller-owned).
   ctx.on('session/event', (session, event) => {
-    if (session.id !== agent.session.id) return
+    if (session.id !== agent.session.id) {
+      return;
+    }
     if (event.seq >= firstSeq) {
       if (event.type === 'turn/end') {
-        void sessions.flush(agent.session).catch((error) => {
-          console.error(`dsh-tui: session flush failed: ${error instanceof Error ? error.message : String(error)}`)
-        })
-      } else if (event.type === 'turn/start' || event.type === 'tool/call' || event.type === 'tool/result') {
-        scheduleFlush()
+        void sessions.flush(agent.session).catch(error => {
+          console.error(
+            `dsh-tui: session flush failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      } else if (
+        event.type === 'turn/start' ||
+        event.type === 'tool/call' ||
+        event.type === 'tool/result'
+      ) {
+        scheduleFlush();
       }
     }
-    forward(event)
-  })
+    forward(event);
+  });
 
-  let app
-  let exited = false
+  let app; // eslint-disable-line prefer-const
+  let exited = false;
   const onExit = () => {
-    if (exited) return
-    exited = true
+    if (exited) {
+      return;
+    }
+    exited = true;
     // Final durability checkpoint before the harness exits.
-    void sessions.flush(agent.session).catch(() => {})
+    void sessions.flush(agent.session).catch(() => {});
     if (app) {
       try {
-        app.unmount()
+        app.unmount();
       } catch {
         // The App already unmounted itself via useApp().exit().
       }
@@ -138,15 +155,15 @@ async function run(ctx, exit) {
     // The launcher's graceful path only sets process.exitCode and relies on
     // the event loop draining; file watchers can keep it alive after the UI
     // unmounts, so watchdog the process to release the terminal promptly.
-    exit(0)
+    exit(0);
     setTimeout(() => {
       try {
-        process.exit(0)
+        process.exit(0);
       } catch {
         // The process already exited via the graceful path.
       }
-    }, 2000)
-  }
+    }, 2000);
+  };
 
   // exitOnCtrlC: false — the App owns Ctrl-C so it can exit the harness cleanly.
   app = render(
@@ -155,27 +172,29 @@ async function run(ctx, exit) {
       onEvent: forward,
       onExit,
       onInterrupt: () => agent.cancel({ kind: 'user' }),
-      onModelSwitch: (newModel) => {
+      onModelSwitch: newModel => {
         try {
           // Update the default model selection so the next turn uses the new model.
           // The agent's model selection is installed via installModelSelection;
           // we update the selection object's `current` to reflect the new model.
-          const selection = defaultModel.currentSelection()
-          if (selection && selection.model === newModel) return true
+          const selection = defaultModel.currentSelection();
+          if (selection && selection.model === newModel) {
+            return true;
+          }
           // Best-effort: update the default model source if the API supports it.
           if (typeof defaultModel.updateSelection === 'function') {
-            defaultModel.updateSelection({ ...selection, model: newModel })
-            return true
+            defaultModel.updateSelection({ ...selection, model: newModel });
+            return true;
           }
           // Fallback: the selection object is mutable (installed via installModelSelection).
-          const installed = agent.ctx?.get?.('__modelSelection__')
+          const installed = agent.ctx?.get?.('__modelSelection__');
           if (installed && installed.current) {
-            installed.current = { ...installed.current, model: newModel }
-            return true
+            installed.current = { ...installed.current, model: newModel };
+            return true;
           }
-          return false
+          return false;
         } catch {
-          return false
+          return false;
         }
       },
       firstSeq,
@@ -183,5 +202,5 @@ async function run(ctx, exit) {
       themeBg,
     }),
     { exitOnCtrlC: false },
-  )
+  );
 }

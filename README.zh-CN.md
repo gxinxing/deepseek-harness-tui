@@ -76,6 +76,74 @@ provider 注册在 `~/.dsh/settings.yaml`（`llm-pi-ai.providers.tokendance`）�
 >
 > 已于 2026-08-13 在本机应用。该改动位于全局 dsh 安装中，**升级 `dsh` 后会丢失**——升级后需重新应用（值得提一个上游 PR）。
 
+## 自检 · 自修 · 自更新闭环
+
+本项目内置完整的自动化质量门控，形成 **自检 → 自修 → 自更新** 闭环：
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  本地开发时   │    │  提交前      │    │  CI / PR时   │
+│  pnpm check  │───▶│ lint-staged  │───▶│  ci.yml     │
+│  (一键全检)   │    │  (git commit) │    │  (GitHub)    │
+└──────────────┘    └──────────────┘    └──────────────┘
+      ▲                                       │
+      │                                       ▼
+      │                            ┌──────────────────────┐
+      │                            │  lint + format:check  │
+      │                            │  + test (Node 20/22)  │
+      │                            └──────────────────────┘
+      │                                       │
+      ▼                                       ▼
+┌──────────────────────────────────────────────────────────┐
+│              deps.yml  (每周一自动依赖扫描)              │
+│  发现更新 → 自动开 PR → review 后合并 → 闭环更新         │
+└──────────────────────────────────────────────────────────┘
+```
+
+### 本地自检
+
+```bash
+pnpm check        # 一键全检：lint → format:check → test
+pnpm lint         # 代码质量（ESLint）
+pnpm format:check # 格式一致性（Prettier）
+pnpm test         # 单元测试（Node built-in test runner）
+```
+
+### 本地自修
+
+```bash
+pnpm lint:fix     # ESLint 自动修复可修复的问题
+pnpm format       # Prettier 自动格式化全部源码
+```
+
+**提交时自动触发**（husky + lint-staged）：
+- `git commit` → lint-staged 对 staged 文件自动执行 `prettier --write` + `eslint --fix`
+- 无需手动执行 `pnpm format` / `pnpm lint:fix`，已提交的代码始终整洁
+
+### 依赖自更新
+
+```bash
+pnpm deps:check   # 扫描所有依赖的可用更新（分组展示 + 安全审计）
+pnpm deps:update  # 将 package.json 升级到最新兼容版本并 pnpm install
+```
+
+**GitHub Actions 自动执行**（`.github/workflows/deps.yml`）：
+- 每周一 06:00 UTC 自动扫描依赖
+- 发现更新 → 自动创建 `deps/auto-update-YYYYMMDD` 分支 + PR
+- 可随时在 GitHub 手动触发 `Dependency Update` workflow
+
+### CI 门控（`.github/workflows/ci.yml`）
+
+| 触发 | 节点 | 矩阵 |
+|------|------|------|
+| `push` / `pull_request` to main | `inspect` | Node 20 + Node 22 |
+| | lint | ✅ |
+| | format:check | ✅ |
+| | test (57 cases) | ✅ |
+| | coverage upload | Node 22 only |
+
+任一阶段失败均阻断合并，确保主线始终通过全部自检。
+
 ## 贡献
 
 欢迎提 issue 和 PR。适合新手的好任务：把两个运行时补丁提到上游（TokenDance tool-call 守卫、grep 权限错误容忍）、补充浅色主题截图、把欢迎 banner 移植到其他模型 provider。动事件桥之前先读 [INTEGRATION-NOTES.md](INTEGRATION-NOTES.md)。
