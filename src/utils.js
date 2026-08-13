@@ -29,7 +29,7 @@ export const hexToRgb = (hex) => {
   return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [0, 0, 0]
 }
 
-/** Faint block behind user messages (Codex user_message_bg_rgb). */
+/** Faint block behind user messages (user_message_bg_rgb). */
 export const userMessageBg = (bgHex) =>
   rgbToHex(blend(isLightBg(hexToRgb(bgHex)) ? [0, 0, 0] : [255, 255, 255], hexToRgb(bgHex), isLightBg(hexToRgb(bgHex)) ? 0.04 : 0.12))
 
@@ -87,7 +87,7 @@ export function wrapText(text, width) {
 
 /**
  * Wrap and prefix: first line gets `prefix`, subsequent lines get `indent`
- * spaces — the Codex aligned-message look.
+ * spaces — the aligned-gutter look.
  */
 export function prefixedLines(text, width, prefix, indent = 2) {
   const pad = ' '.repeat(indent)
@@ -127,7 +127,7 @@ export function fmtDuration(ms) {
   return sec < 10 ? `${sec.toFixed(1)}s` : `${Math.round(sec)}s`
 }
 
-/** Codex-style compact elapsed: 0s, 59s, 1m 02s, 1h 02m 03s. */
+/** Compact elapsed: 0s, 59s, 1m 02s, 1h 02m 03s. */
 export function fmtElapsedCompact(ms) {
   const total = Math.max(0, Math.floor(ms / 1000))
   const hours = Math.floor(total / 3600)

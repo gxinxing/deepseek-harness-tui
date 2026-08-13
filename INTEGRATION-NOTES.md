@@ -583,7 +583,7 @@ The UI is a single Ink app (`src/ui.js`, ~800 lines) mounted by the `tui-runner`
 
 ### Empty state (brand banner)
 
-Inspired by Hermes Agent's TUI (`ui-tui`, also Ink) and Codex CLI:
+Inspired by Hermes Agent's TUI (`ui-tui`, also Ink):
 
 - **DeepSeek logo** — 6-line ANSI Shadow art ("DeepSeek"), gradient-colored `#4D6BFE → #B5C6FF` (brand blue ramp), centered.
 - **Tagline** — `DeepSeek Harness · terminal AI chat for the DeepSeek Harness` (bold blue + dim).

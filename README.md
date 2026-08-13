@@ -1,6 +1,6 @@
 # deepseek-harness-tui
 
-**An interactive terminal chat for DeepSeek Harness — Codex CLI style, built with Ink (React for terminals).**
+**An interactive terminal chat for DeepSeek Harness — terminal-native style, built with Ink (React for terminals).**
 
 Give it a TokenDance key and a `dsh` install; run `dsh --profile tui` and you get a zero-chrome terminal chat with DeepSeek models: bottom-anchored transcript, tool calls folded into cells, thinking folding, and a theme that adapts to your terminal via OSC 11. It's a thin, readable plugin (~800 lines of UI) — not a re-implementation of the harness.
 
@@ -40,7 +40,7 @@ In the TUI: `ctrl + t` folds the thinking trace, `esc` interrupts the running tu
 
 ## What it does
 
-- **Codex CLI–style UI, not a re-skinned echo.** The transcript is the surface — no boxes, no chrome. The DeepSeek brand banner (ANSI Shadow logo, gradient) greets you only on the empty state; model · cwd live in a dim footer.
+- **Terminal-native UI, not a re-skinned echo.** The transcript is the surface — no boxes, no chrome. The DeepSeek brand banner (ANSI Shadow logo, gradient) greets you only on the empty state; model · cwd live in a dim footer.
 - **Tool calls fold into cells.** `⠋ Running <cmd>` while active → `✓ <cmd> • 1.2s` (or `✗` on error), with output merged into the cell, dimmed, and truncated head + tail (`… +N lines`). No interleaved wall of raw output.
 - **Theme derived from your terminal.** OSC 11 probes the real background: message tints and code chips are blended from it (12% white over dark, 4% black over light) — never hardcoded hex. Force a theme with `DSH_TUI_BG=#ffffff` for testing.
 - **Thinking you can fold.** `ctrl + t` toggles the reasoning trace; `esc` aborts the turn at any time via `agent.cancel({ kind: 'user' })`.

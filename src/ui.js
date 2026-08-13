@@ -1,7 +1,7 @@
 /**
  * dsh-tui Ink UI — plain React (React.createElement only, no JSX, no build).
  *
- * Design: Codex CLI TUI, distilled from openai/codex codex-rs/tui sources.
+ * Design: terminal-native TUI, distilled from Hermes-style agent UIs.
  *   - No chrome boxes. Terminal-default colors; semantic accents only:
  *     cyan (input ›, user ▌, activity), green (success/output),
  *     red (errors), magenta (brand + `$` prompt), dim (secondary).
@@ -35,13 +35,13 @@ import {
 /** createElement shorthand. */
 const el = React.createElement
 
-// ── Codex semantic palette (terminal-default based) ──────────────────────
+// ── Semantic palette (terminal-default based) ──────────────────────
 const ACCENT = 'cyan' // input ›, user ▌, activity markers
 const OK = 'green' // ✓, command output
 const ERR = 'red' // ✗, errors
 const BRAND = 'magenta' // `$` prompt, app mark
 
-/** Codex-style braille spinner (ink-spinner has no braille frame set). */
+/** Braille spinner (ink-spinner has no braille frame set). */
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
 function BrailleSpinner() {
@@ -69,7 +69,7 @@ const HELP_TEXT = [
   '  ctrl + c      quit',
 ].join('\n')
 
-// ── Markdown (Codex-style: keep `#` and fences, no boxes) ────────────────
+// ── Markdown (keep `#` and fences, no boxes) ────────────────────────
 
 /** Inline tokens: `code`, **bold**, *italic*. Returns Text children. */
 function renderInline(text, keyPrefix, chipBg) {
@@ -101,7 +101,7 @@ function renderInline(text, keyPrefix, chipBg) {
  * (bold), fenced blocks keep fences, plain text renders inline-styled.
  * Returns an array of rendered lines (one Text per line). `prefix` (e.g.
  * `• `) is applied to the first line only; later lines indent to the same
- * column, giving the Codex aligned-gutter look.
+ * column, giving the aligned-gutter look.
  */
 function markdownLines(text, width, indent = 2, chipBg = '#333333', prefix = '') {
   const pad = ' '.repeat(indent)
@@ -160,7 +160,7 @@ function plainLines(text, width, prefix, indent = 2) {
 function ChatRow({ item, width, thinkingOpen, themeBg }) {
   switch (item.kind) {
     case 'user': {
-      // Faint derived background + cyan ▌ prefix (Codex user-message style).
+      // Faint derived background + cyan ▌ prefix (user-message style).
       return el(
         Box,
         { flexDirection: 'column', backgroundColor: userMessageBg(themeBg), paddingY: 0, flexShrink: 0 },
@@ -586,7 +586,7 @@ export function App({ agent, onEvent, onExit, onInterrupt, onModelSwitch, firstS
     [busy, agent, handleExit, pushItem, showBusyHint, items, model, onModelSwitch],
   )
 
-  // ── Viewport: keep the transcript tail visible (Codex bottom-anchors). ──
+  // ── Viewport: keep the transcript tail visible (bottom-anchored). ──
   // Rough per-item height estimates; good enough to avoid clipping the tail.
   const estimateLines = (item) => {
     const text =

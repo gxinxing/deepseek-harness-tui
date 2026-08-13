@@ -1,6 +1,6 @@
 # deepseek-harness-tui
 
-**为 DeepSeek Harness 打造的交互式终端聊天界面——Codex CLI 风格，基于 Ink（React 终端 UI 框架）构建。**
+**为 DeepSeek Harness 打造的交互式终端聊天界面——终端原生风格，基于 Ink（React 终端 UI 框架）构建。**
 
 准备一个 TokenDance key 和 `dsh` 安装，运行 `dsh --profile tui` 即可获得一个 zero-chrome 的终端聊天界面：底部锚定对话流、工具调用折叠成 cell、thinking 折叠、背景色经 OSC 11 自适应终端主题。它是一个精简、可读的插件（约 800 行 UI），不是对 harness 的重实现。
 
@@ -40,7 +40,7 @@ TUI 内：`ctrl + t` 折叠 thinking，`esc` 中断当前回合，`/help` 查看
 
 ## 它能做什么
 
-- **Codex CLI 风格 UI，而不是换个皮的复读机。** transcript 即界面——无边框、无装饰。DeepSeek 品牌 banner（ANSI Shadow logo，渐变配色）只在空态出现；model · cwd 放在底部 dim footer。
+- **终端原生 UI，而不是换个皮的复读机。** transcript 即界面——无边框、无装饰。DeepSeek 品牌 banner（ANSI Shadow logo，渐变配色）只在空态出现；model · cwd 放在底部 dim footer。
 - **工具调用折叠成 cell。** 执行中 `⠋ Running <cmd>` → 结束后 `✓ <cmd> • 1.2s`（出错为 `✗`），输出合并进 cell、置暗显示，按 head + tail 截断（`… +N lines`），不会刷出一大墙原始输出。
 - **主题由终端推导。** OSC 11 探测真实背景色：消息底色与代码 chip 由它混合而来（深色 12% 白、浅色 4% 黑），绝不写死十六进制；可用 `DSH_TUI_BG=#ffffff` 强制主题测试。
 - **Thinking 可折叠。** `ctrl + t` 切换推理轨迹；`esc` 随时通过 `agent.cancel({ kind: 'user' })` 中止回合。
