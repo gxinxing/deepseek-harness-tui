@@ -1,6 +1,4 @@
 #!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
-
 # ── Self-repair: auto-format + auto-lint-fix staged JS files ──────────────
 # lint-staged reads the "lint-staged" key from package.json
 pnpm lint-staged
